@@ -26,15 +26,34 @@ class TaxRange:
         """
         return min(max(total - self.lower_bound, 0), self.upper_bound - self.lower_bound)
 
-    def tax(self, amount: float) -> float:
+    def tax(self, taxable_amount: float) -> float:
         """
         Computes the amount of tax deducted from the amount where only the
         amount within the range is taxed at the percent
 
-        :param amount: total amount of money to tax
+        :param taxable_amount: total amount of money to tax
         :return: amount taxed
         """
-        return self.amount_in_range(amount) * self.percent
+        return self.amount_in_range(taxable_amount) * self.percent
+
+    def __str__(self):
+        return f"${self.lower_bound:.2f} -> ${self.upper_bound:.2f} @ {self.percent:.1%}"
+
+
+class TaxResult:
+    def __init__(self):
+        self.taxable_amount = 0
+        self.total_taxed = 0
+        self.breakdown = []
+
+    def real_taxable_amount(self) -> float:
+        return max(self.taxable_amount, 0)
+
+    def effective_tax_rate(self) -> float:
+        return self.total_taxed / self.taxable_amount
+
+    def real_effective_tax_rate(self) -> float:
+        return max(self.effective_tax_rate(), 0)
 
 
 class TaxBracket:
@@ -54,18 +73,21 @@ class TaxBracket:
         for i in range(len(self.tax_ranges) - 1):
             assert self.tax_ranges[i].upper_bound == self.tax_ranges[i + 1].lower_bound, "Gap between lower and upper bounds"
 
-    def tax(self, amount: float) -> float:
+    def tax(self, taxable_amount: float) -> TaxResult:
         """
         Computes the amount of tax deducted from the amount in a step pattern.
         The amount of money within the first range is deducted at it's taxable
         percent, moving onto subsequent ranges until all tax has been computed.
 
-        :param amount: total amount of money to tax
+        :param taxable_amount: total amount of money to tax
         :return: amount taxed
         """
-        total_taxed = 0.0
+        tax = TaxResult()
+        tax.taxable_amount = taxable_amount
         for tr in self.tax_ranges:
-            if tr.amount_in_range(amount) == 0.0:
+            if tr.amount_in_range(taxable_amount) == 0.0:
                 break  # no more can possibly be taxed since there's no money in the range and ranges always increase
-            total_taxed += tr.tax(amount)
-        return total_taxed
+            amount = tr.tax(taxable_amount)
+            tax.breakdown.append(amount)
+            tax.total_taxed += amount
+        return tax

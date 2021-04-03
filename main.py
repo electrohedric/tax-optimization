@@ -12,12 +12,17 @@ single_tax_ranges_2021 = (
     TaxRange(523600, float('inf'), 0.37),
 )
 single_tax_bracket_2021 = TaxBracket(*single_tax_ranges_2021)
+standard_deduction_2021 = 12550.00
 
 while True:
     try:
-        amount = float(input("Enter taxable income: $"))
+        amount = float(input("Enter total income: $"))
+        deduction = float(input("Enter deduction or nothing: $") or '0')
     except ValueError:
         print("Quit")
         sys.exit()
-    tax = single_tax_bracket_2021.tax(amount)
-    print(f"${tax:.2f} taxed")
+    tax = single_tax_bracket_2021.tax(amount - max(deduction, standard_deduction_2021))
+    print(f"${tax.total_taxed:.2f} of ${tax.real_taxable_amount():.2f} taxed")
+    for i in range(len(tax.breakdown)):
+        print(f"{single_tax_bracket_2021.tax_ranges[i]} = {tax.breakdown[i]}")
+    print(f"Effective tax rate: {tax.real_effective_tax_rate():.2%}")
