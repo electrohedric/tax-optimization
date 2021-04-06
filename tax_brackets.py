@@ -42,6 +42,9 @@ class TaxRange:
 
 class TaxResult:
     def __init__(self):
+        """
+        Contains all tax information for a Tax Bracket
+        """
         self.taxable_amount = 0
         self.total_taxed = 0
         self.breakdown = []
