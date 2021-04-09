@@ -46,14 +46,14 @@ class TaxResult:
         Contains all tax information for a Tax Bracket
         """
         self.taxable_amount = 0
-        self.total_taxed = 0
+        self.tax_payed = 0
         self.breakdown = []
 
     def real_taxable_amount(self) -> float:
         return max(self.taxable_amount, 0)
 
     def effective_tax_rate(self) -> float:
-        return self.total_taxed / self.taxable_amount
+        return self.tax_payed / self.taxable_amount
 
     def real_effective_tax_rate(self) -> float:
         return max(self.effective_tax_rate(), 0)
@@ -92,5 +92,5 @@ class TaxBracket:
                 break  # no more can possibly be taxed since there's no money in the range and ranges always increase
             amount = tr.tax(taxable_amount)
             tax.breakdown.append(amount)
-            tax.total_taxed += amount
+            tax.tax_payed += amount
         return tax
