@@ -6,7 +6,7 @@ import investment
 from tax_brackets import TaxBracket, TaxRange
 
 single_tax_ranges_2021 = (
-    TaxRange(0,   9950, 0.10),
+    TaxRange(0, 9950, 0.10),
     TaxRange(9950, 40525, 0.12),
     TaxRange(40525, 86375, 0.22),
     TaxRange(86375, 164925, 0.24),
@@ -37,14 +37,14 @@ def test_investment():
     age = 25
     retire = 65
     die = 90
-    ir = investment.simple_invest(40000, single_tax_bracket_2021, retirement=retire-age, death=die-age)
+    ir = investment.simple_invest(40000, single_tax_bracket_2021, retirement=retire - age, death=die - age)
     # fig, (ax0,) = plt.subplots(1, 1)
     plt.plot(ir.get_years() + age, ir.get_end_balances())
     plt.show()
     print("=== start investing ===")
     for year in ir.year_results:
         print(f"{year.year + age} ${year.total_end_amount():.2f}")
-        if year.year == retire-age-1:
+        if year.year == retire - age - 1:
             print("=== retirement ===")
     print("=== dead ===")
 
