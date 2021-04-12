@@ -1,26 +1,18 @@
-from typing import Iterable, List
+from typing import Iterable
 
 import numpy as np
 
 from tax_brackets import TaxBracket
 
 
-class ContributionResult:
-    def __init__(self, start_amount: float, put_amount: float, tax_payed: float):
+class BalanceChangeResult:
+    def __init__(self, start_amount: float, change_amount: float):
         self.start_amount = start_amount
-        self.put_amount = put_amount
-        self.tax_payed = tax_payed
-        self.net_amount = self.put_amount - self.tax_payed
-        self.end_amount = self.start_amount + self.net_amount  # only net is contributed
-
-
-class DistributionResult:
-    def __init__(self, start_amount: float, take_amount: float, tax_payed: float):
-        self.start_amount = start_amount
-        self.take_amount = take_amount
-        self.tax_payed = tax_payed
-        self.net_amount = self.take_amount - self.tax_payed
-        self.end_amount = self.start_amount - self.take_amount  # full amount is taken
+        self.change_amount = change_amount
+        self.end_amount = self.start_amount + self.change_amount
+    
+    def is_contribution(self):
+        return self.change_amount > 0
 
 
 class GrowthResult:
@@ -31,158 +23,156 @@ class GrowthResult:
         self.end_amount = self.start_amount + self.interest
 
 
-class InvestmentYearResult:
-    def __init__(self, year: int):
-        self.year = year
-        self.contributions: List[ContributionResult] = []
-        self.distributions: List[DistributionResult] = []
-        self.growth: List[GrowthResult] = []
-
-    def total_end_amount(self):
-        return sum([x.end_amount for x in self.growth])
-
-
 class InvestmentResult:
     def __init__(self):
         self.year_results: list[InvestmentYearResult] = []
-
-    def get_final_end_balance(self):
-        return self.year_results[-1].total_end_amount()
-
+    
+    def get_final_net_worth(self):
+        return self.year_results[-1].net_worth()
+    
     def get_years(self):
-        return np.array([x.year for x in self.year_results])
-
-    def get_end_balances(self):
-        return np.array([x.total_end_amount() for x in self.year_results])
+        return np.array([x.year for x in self])
+    
+    def get_net_worths(self):
+        return np.array([x.net_worth() for x in self])
+    
+    def get_taxes_paid(self):
+        return np.array([x.income.income_tax.tax_paid for x in self])
+    
+    def __iter__(self):
+        for x in self.year_results:
+            yield x
 
 
 class Account:
     def __init__(self, initial_amount: float = 0):
         self.amount = initial_amount
-
+    
     def grow(self, return_rate: float) -> GrowthResult:
         result = GrowthResult(self.amount, return_rate)
         self.amount = result.end_amount
         return result
-
-    def deposit(self, amount: float, taxer: TaxBracket) -> ContributionResult:
-        tax = taxer.tax(amount).tax_payed if self.tax_deposit() else 0
-        result = ContributionResult(self.amount, amount, tax)
+    
+    def _change(self, amount: float) -> BalanceChangeResult:
+        result = BalanceChangeResult(self.amount, amount)
         self.amount = result.end_amount
         return result
-
-    def tax_deposit(self) -> bool:
-        return False
-
-    def withdraw(self, amount: float, taxer: TaxBracket) -> DistributionResult:
-        tax = taxer.tax(amount).tax_payed if self.tax_withdraw() else 0
-        result = DistributionResult(self.amount, amount, tax)
-        self.amount = result.end_amount
-        return result
-
-    def tax_withdraw(self):
-        return False
-
-
-class TraditionalAccount(Account):
-    def tax_deposit(self) -> bool:
-        return False
-
-    def tax_withdraw(self):
-        return True
-
-
-class RothAccount(Account):
-    def tax_deposit(self) -> bool:
-        return True
-
-    def tax_withdraw(self):
-        return False
+    
+    def deposit(self, amount: float) -> BalanceChangeResult:
+        return self._change(amount)
+    
+    def withdraw(self, amount: float) -> BalanceChangeResult:
+        return self._change(-amount)
 
 
 class Contribution:
-    def __init__(self, account: Account, amount: float, taxer: TaxBracket):
+    def __init__(self, account: Account, amount: float):
         self.account = account
         self.amount = amount
-        self.taxer = taxer
-
-    def put(self) -> ContributionResult:
-        return self.account.deposit(self.amount, self.taxer)
+    
+    def put(self) -> BalanceChangeResult:
+        return self.account.deposit(self.amount)
 
 
 class Distribution:
-    def __init__(self, account: Account, amount: float, taxer: TaxBracket):
+    def __init__(self, account: Account, amount: float):
         self.account = account
         self.amount = amount
-        self.taxer = taxer
-
-    def take(self) -> DistributionResult:
-        return self.account.withdraw(self.amount, self.taxer)
+    
+    def take(self) -> BalanceChangeResult:
+        return self.account.withdraw(self.amount)
 
 
 class Growth:
     def __init__(self, account: Account, return_rate: float):
         self.account = account
         self.return_rate = return_rate
-
+    
     def grow(self) -> GrowthResult:
         return self.account.grow(self.return_rate)
 
 
-class InvestmentYear:
-    def __init__(self, contributions: Iterable[Contribution], distributions: Iterable[Distribution], growths: Iterable[Growth]):
-        self.contributions = contributions
-        self.distributions = distributions
-        self.growths = growths
+class IncomeResult:
+    def __init__(self, salary_amount: float, below_the_line: float, trad_cont_amount: float,
+                 trad_dist_alloc_amount: float, roth_dist_amount: float, tax_bracket: TaxBracket):
+        self.deductions = trad_cont_amount + below_the_line  # above + below
+        self.gross_income = salary_amount + trad_dist_alloc_amount
+        self.agi = self.gross_income - trad_cont_amount  # adjusted gross income
+        self.taxable_income = self.gross_income - self.deductions
+        self.income_tax = tax_bracket.tax(self.taxable_income)
+        self.net_income = self.gross_income - self.income_tax.tax_paid  # leftover dollars after tax is paid
+        self.total_income = self.net_income + roth_dist_amount
 
-    def compute(self, year: int) -> InvestmentYearResult:
-        result = InvestmentYearResult(year)
-        result.contributions = [c.put() for c in self.contributions]
-        result.distributions = [d.take() for d in self.distributions]
-        result.growth = [g.grow() for g in self.growths]
-        return result
+
+class InvestmentYearResult:
+    def __init__(self, year: int, contributions: Iterable[Contribution], distributions: Iterable[Distribution], growths: Iterable[Growth], income_result: IncomeResult):
+        self.year = year
+        self.contributions = [c.put() for c in contributions]
+        self.distributions = [d.take() for d in distributions]
+        self.growth = [g.grow() for g in growths]
+        self.income = income_result
+    
+    def net_worth(self):
+        return sum([x.end_amount for x in self.growth])
+    
+    def total_contributions(self):
+        return sum([x.change_amount for x in self.contributions])
+    
+    def total_distributions(self):
+        return sum([-x.change_amount for x in self.distributions])
+    
+    def total_growth(self):
+        return sum([x.interest for x in self.growth])
 
 
 def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
                   retire_income_percent: float = 8, below_the_line: float = 12550, salary_raise_rate: float = 1,
-                  return_rate: float = 7, trad_cont_percent: float = 5, roth_cont_percent: float = 5,
+                  return_rate: float = 7, trad_alloc_percent: float = 5, roth_alloc_percent: float = 5,
                   trad_start: float = 0, roth_start: float = 0) -> InvestmentResult:
-    trad_account = TraditionalAccount(trad_start)
-    roth_account = RothAccount(roth_start)
+    trad_account = Account(trad_start)
+    roth_account = Account(roth_start)
     salary = Account(starting_salary)  # keep track of current salary
     salary_growth = Growth(salary, salary_raise_rate / 100)
     trad_growth = Growth(trad_account, return_rate / 100)
     roth_growth = Growth(roth_account, return_rate / 100)
-    standard_account = TraditionalAccount()  # keep track of taxable income
+    expenses_percent = 100 - (trad_alloc_percent + roth_alloc_percent)
     result = InvestmentResult()
     for y in range(retirement):
-        # investing in both accounts, as a percentage of salary each year
-        trad_cont = Contribution(trad_account, salary.amount * trad_cont_percent / 100, tax_bracket)
-        roth_cont = Contribution(roth_account, salary.amount * roth_cont_percent / 100, tax_bracket)
-
-        # compute salary
-        deductions = trad_cont.amount + below_the_line  # above + below
-        standard_account.amount = salary.amount - deductions  # set taxable income directly, minus deductions
-        salary_dist = Distribution(standard_account, standard_account.amount, tax_bracket)  # take fully taxed income
-
+        # determine amount of salary to allocate
+        trad_alloc = salary.amount * trad_alloc_percent / 100
+        roth_alloc = salary.amount * roth_alloc_percent / 100
+        
+        expenses = salary.amount * expenses_percent / 100
+        
+        # compute tax on allocations
+        roth_tax_contr_alloc = tax_bracket.tax(roth_alloc, expenses)
+        
+        # compute how much is contributions to roth and traditional accounts
+        trad_cont = Contribution(trad_account, trad_alloc)  # == trad_dist
+        roth_cont = Contribution(roth_account, roth_tax_contr_alloc.leftover())
+        
+        # compute income
+        income_result = IncomeResult(salary.amount, below_the_line, trad_cont.amount, 0, 0, tax_bracket)
+        
         # run investment year
-        invest_year = InvestmentYear([trad_cont, roth_cont], [salary_dist], [trad_growth, roth_growth])
-        year_result = invest_year.compute(y)
+        year_result = InvestmentYearResult(y, [trad_cont, roth_cont], [], [trad_growth, roth_growth], income_result)
         result.year_results.append(year_result)
-
+        
         # get a raise. do this outside so it doesn't count it in the total amount
         salary_growth.grow()
-
+    
     # retirement
-    trad_dist_amount = trad_account.amount * retire_income_percent / 100
-    roth_dist_amount = roth_account.amount * retire_income_percent / 100
-
-    # taking out from both accounts
-    trad_dist = Distribution(trad_account, trad_dist_amount, tax_bracket)
-    roth_dist = Distribution(roth_account, roth_dist_amount, tax_bracket)
+    
+    # "determine" amount to take in distributions
+    trad_dist = Distribution(trad_account, trad_account.amount * retire_income_percent / 100)
+    roth_dist = Distribution(roth_account, roth_account.amount * retire_income_percent / 100)
+    
+    trad_tax_dist_alloc = tax_bracket.reverse_tax(trad_dist.amount)
+    
     for y in range(retirement, death):
         # run years until we die. nothing being invested, but accounts still grow
-        invest_year = InvestmentYear([], [trad_dist, roth_dist], [trad_growth, roth_growth])
-        year_result = invest_year.compute(y)
+        # roth_dist_alloc == roth_dist
+        income_result = IncomeResult(0, below_the_line, 0, trad_tax_dist_alloc.taxable_amount, roth_dist.amount, tax_bracket)
+        year_result = InvestmentYearResult(y, [], [trad_dist, roth_dist], [trad_growth, roth_growth], income_result)
         result.year_results.append(year_result)
     return result

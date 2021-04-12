@@ -46,14 +46,18 @@ class TaxResult:
         Contains all tax information for a Tax Bracket
         """
         self.taxable_amount = 0
-        self.tax_payed = 0
+        self.margin = 0
+        self.tax_paid = 0
         self.breakdown = []
-
+    
+    def leftover(self):
+        return self.taxable_amount - self.tax_paid
+    
     def real_taxable_amount(self) -> float:
         return max(self.taxable_amount, 0)
 
     def effective_tax_rate(self) -> float:
-        return self.tax_payed / self.taxable_amount
+        return self.tax_paid / self.taxable_amount
 
     def real_effective_tax_rate(self) -> float:
         return max(self.effective_tax_rate(), 0)
@@ -76,21 +80,35 @@ class TaxBracket:
         for i in range(len(self.tax_ranges) - 1):
             assert self.tax_ranges[i].upper_bound == self.tax_ranges[i + 1].lower_bound, "Gap between lower and upper bounds"
 
-    def tax(self, taxable_amount: float) -> TaxResult:
+    def tax(self, taxable_amount: float, margin: float = 0) -> TaxResult:
         """
         Computes the amount of tax deducted from the amount in a step pattern.
         The amount of money within the first range is deducted at it's taxable
         percent, moving onto subsequent ranges until all tax has been computed.
 
         :param taxable_amount: total amount of money to tax
+        :param margin: amount to move the taxable amount up the bracket by. everything under the margin is taxed at 0%.
+        thus: tax(a, margin=m) == tax(a+m) - tax(a)
         :return: amount taxed
         """
         tax = TaxResult()
         tax.taxable_amount = taxable_amount
+        tax.margin = margin
         for tr in self.tax_ranges:
-            if tr.amount_in_range(taxable_amount) == 0.0:
+            if tr.amount_in_range(taxable_amount + margin) == 0.0:
                 break  # no more can possibly be taxed since there's no money in the range and ranges always increase
-            amount = tr.tax(taxable_amount)
+            amount = tr.tax(taxable_amount + margin) - tr.tax(margin)
             tax.breakdown.append(amount)
-            tax.tax_payed += amount
+            tax.tax_paid += amount
         return tax
+    
+    def reverse_tax(self, needed_amount: float, margin: float = 0) -> TaxResult:
+        # FIXME: implement
+        tax = TaxResult()
+        tax.margin = margin
+        tax.breakdown = []
+        tax.taxable_amount = needed_amount * 1.05
+        tax.tax_paid = tax.taxable_amount - needed_amount
+        return tax
+
+ZERO_TAX = TaxBracket(TaxRange(0, float('inf'), 0))
