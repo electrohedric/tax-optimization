@@ -50,7 +50,7 @@ class TaxResult:
         self.tax_paid = 0
         self.breakdown = []
     
-    def leftover(self):
+    def leftover(self) -> float:
         return self.taxable_amount - self.tax_paid
     
     def real_taxable_amount(self) -> float:
@@ -101,14 +101,8 @@ class TaxBracket:
             tax.breakdown.append(amount)
             tax.tax_paid += amount
         return tax
-    
-    def reverse_tax(self, needed_amount: float, margin: float = 0) -> TaxResult:
-        # FIXME: implement
-        tax = TaxResult()
-        tax.margin = margin
-        tax.breakdown = []
-        tax.taxable_amount = needed_amount * 1.05
-        tax.tax_paid = tax.taxable_amount - needed_amount
-        return tax
+
 
 ZERO_TAX = TaxBracket(TaxRange(0, float('inf'), 0))
+
+
