@@ -76,7 +76,7 @@ def test_investment():
     plot_investment(ir_roth, age, retire, ax0, ax1, ax2, ax3, ax4, "Roth")
     plot_investment(ir_trad, age, retire, ax0, ax1, ax2, ax3, ax4, "Trad")
     plot_investment(ir_5050, age, retire, ax0, ax1, ax2, ax3, ax4, "50/50")
-    plt.show()
+    # plt.show()
 
 
 test_investment()

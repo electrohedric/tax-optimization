@@ -69,7 +69,7 @@ class TaxBracket:
         A tax bracket consisting of multiple tax ranges for computing taxes
 
         :param tax_ranges: All tax ranges, starting from 0.00 and ending at infinity.
-        there can be no gap between the end of one range and the start of the next
+            there can be no gap between the end of one range and the start of the next
         """
         self.tax_ranges = tax_ranges
 
@@ -88,7 +88,7 @@ class TaxBracket:
 
         :param taxable_amount: total amount of money to tax
         :param margin: amount to move the taxable amount up the bracket by. everything under the margin is taxed at 0%.
-        thus: tax(a, margin=m) == tax(a+m) - tax(a)
+            thus: tax(a, margin=m) == tax(a+m) - tax(a)
         :return: amount taxed
         """
         tax = TaxResult()
