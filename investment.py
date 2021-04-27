@@ -364,19 +364,22 @@ def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: i
     retirement_expenses = result.get_final_net_worth() * retirement_expenses_percent / 100
 
     total_alloc_percent = roth_alloc_percent + trad_alloc_percent
-    trad_dist_percent = trad_alloc_percent / total_alloc_percent
-    roth_dist_percent = roth_alloc_percent / total_alloc_percent
+    trad_dist_ratio = trad_alloc_percent / total_alloc_percent
+    roth_dist_ratio = roth_alloc_percent / total_alloc_percent
 
     # "determine" amount to take in distributions
-    trad_dist = Distribution(trad_account, retirement_expenses * trad_dist_percent)
-    roth_dist = Distribution(roth_account, retirement_expenses * roth_dist_percent)
 
-    trad_tax_dist_alloc = tax_bracket.tax(trad_dist.amount).tax_paid + trad_dist.amount
-    roth_tax_dist_alloc = roth_dist.amount
     
     for y in range(retirement, death):
         # run years until we die. nothing being invested, but accounts still grow
         # roth_dist_alloc == roth_dist
+
+        trad_dist = Distribution(trad_account, salary.amount * trad_dist_ratio)
+        roth_dist = Distribution(roth_account, salary.amount * roth_dist_ratio)
+
+        trad_tax_dist_alloc = tax_bracket.tax(trad_dist.amount).tax_paid + trad_dist.amount
+        roth_tax_dist_alloc = roth_dist.amount
+
         income_result = IncomeResult(0, below_the_line, 0, trad_tax_dist_alloc, roth_tax_dist_alloc, tax_bracket)
         year_result = InvestmentYearResult(y, {}, {AccountType.TRAD: trad_dist, AccountType.ROTH: roth_dist},
                                            {AccountType.TRAD: trad_growth, AccountType.ROTH: roth_growth}, income_result)
