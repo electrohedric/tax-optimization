@@ -1,3 +1,4 @@
+
 class TaxRange:
     def __init__(self, lower_bound: float, upper_bound: float, percent: float):
         """
@@ -50,9 +51,6 @@ class TaxResult:
         self.tax_paid = 0
         self.breakdown = []
     
-    def leftover(self) -> float:
-        return self.taxable_amount - self.tax_paid
-    
     def real_taxable_amount(self) -> float:
         return max(self.taxable_amount, 0)
 
@@ -101,11 +99,20 @@ class TaxBracket:
             tax.breakdown.append(amount)
             tax.tax_paid += amount
         return tax
-    
+
+    def reverse_tax(self, final_amount: float, deduction: float):
+        EPSILON = 1e-12
+        guess = final_amount
+        for i in range(50):
+            leftover = guess - self.tax(guess - deduction).tax_paid
+            off = final_amount - leftover
+            guess += off
+            if abs(off) < EPSILON:
+                return guess
+        raise ValueError
+
     def __str__(self):
         return self.__class__.__name__ + "\n" + "\n".join([str(x) for x in self.tax_ranges])
 
 
 ZERO_TAX = TaxBracket(TaxRange(0, float('inf'), 0))
-
-

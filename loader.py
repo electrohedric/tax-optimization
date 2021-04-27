@@ -24,7 +24,6 @@ def load_tax_bracket(file: str) -> tax_brackets.TaxBracket:
             ub = float('inf')
         rate = rowdata[1]
         taxrange = tax_brackets.TaxRange(lb, ub, rate)
-        print(taxrange)
         ranges.append(taxrange)
         lb = ub
     taxbracket = tax_brackets.TaxBracket(*ranges)

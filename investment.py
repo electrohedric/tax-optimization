@@ -100,7 +100,8 @@ class InvestmentResult:
 class Account:
     def __init__(self, initial_amount: float = 0):
         """
-        An account which simply holds an amount of money and can perform simple actions such as depositing and withdrawing.
+        An account which simply holds an amount of money and can perform
+        simple actions such as depositing and withdrawing.
         Primary use is to have Result objects which perform actions and contain the results of those actions.
 
         :param initial_amount: starting amount of the account
@@ -297,7 +298,7 @@ class InvestmentYearResult:
 
 
 def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
-                  retirement_expenses_percent: float = 8, below_the_line: float = 12550, salary_raise_rate: float = 1,
+                  retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 0,
                   return_rate: float = 7, trad_alloc_percent: float = 5, roth_alloc_percent: float = 5,
                   trad_start: float = 0, roth_start: float = 0) -> InvestmentResult:
     """
@@ -346,7 +347,7 @@ def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: i
         
         # compute how much is contributions to roth and traditional accounts
         trad_cont = Contribution(trad_account, trad_tax_contr_alloc)  # == trad_dist
-        roth_cont = Contribution(roth_account, roth_tax_contr_alloc.leftover())
+        roth_cont = Contribution(roth_account, roth_alloc - roth_tax_contr_alloc.tax_paid)
         
         # compute income
         income_result = IncomeResult(salary.amount, below_the_line, trad_cont.amount, 0, 0, tax_bracket)
@@ -361,27 +362,48 @@ def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: i
     
     # retirement
 
-    retirement_expenses = result.get_final_net_worth() * retirement_expenses_percent / 100
+    retirement_expenses = salary.amount * retirement_expenses_percent / 100
 
-    total_alloc_percent = roth_alloc_percent + trad_alloc_percent
-    trad_dist_ratio = trad_alloc_percent / total_alloc_percent
-    roth_dist_ratio = roth_alloc_percent / total_alloc_percent
+    # total_alloc_percent = roth_alloc_percent + trad_alloc_percent
+    # trad_dist_ratio = trad_alloc_percent / total_alloc_percent
+    # roth_dist_ratio = roth_alloc_percent / total_alloc_percent
+    broke = False
 
-    # "determine" amount to take in distributions
-
-    
     for y in range(retirement, death):
         # run years until we die. nothing being invested, but accounts still grow
         # roth_dist_alloc == roth_dist
 
-        trad_dist = Distribution(trad_account, salary.amount * trad_dist_ratio)
-        roth_dist = Distribution(roth_account, salary.amount * roth_dist_ratio)
+        # determine amount to take in distributions
+        trad_dist_amount = retirement_expenses
+        # test can't allocate more than in trad account
+        trad_dist_alloc = tax_bracket.reverse_tax(trad_dist_amount, below_the_line)
+        if trad_account.amount < trad_dist_alloc:  # can't take out full amount in trad
+            trad_dist_alloc = trad_account.amount
+            trad_dist_amount = trad_dist_alloc - tax_bracket.tax(trad_dist_alloc - below_the_line).tax_paid
+            trad_dist = Distribution(trad_account, trad_dist_amount)
+        else:  # take out expenses from trad
+            trad_dist = Distribution(trad_account, trad_dist_amount)
 
-        trad_tax_dist_alloc = tax_bracket.tax(trad_dist.amount).tax_paid + trad_dist.amount
-        roth_tax_dist_alloc = roth_dist.amount
+        # if traditional can cover expenses, use all trad
+        if trad_dist.amount < retirement_expenses:
+            # take out roth too
+            # test can't allocate more than in roth account
+            roth_dist_amount = retirement_expenses - trad_dist.amount
+            if roth_account.amount < roth_dist_amount:
+                roth_dist_amount = roth_account.amount
+            roth_dist = Distribution(roth_account, roth_dist_amount)
+            roth_dist_alloc = roth_dist.amount
+        else:
+            roth_dist = Distribution(roth_account, 0)
+            roth_dist_alloc = 0
 
-        income_result = IncomeResult(0, below_the_line, 0, trad_tax_dist_alloc, roth_tax_dist_alloc, tax_bracket)
+        income_result = IncomeResult(0, below_the_line, 0, trad_dist_alloc, roth_dist_alloc, tax_bracket)
         year_result = InvestmentYearResult(y, {}, {AccountType.TRAD: trad_dist, AccountType.ROTH: roth_dist},
                                            {AccountType.TRAD: trad_growth, AccountType.ROTH: roth_growth}, income_result)
         result.year_results.append(year_result)
+
+        if income_result.total_income < retirement_expenses - 0.001 and not broke:
+            print(f"You're broke, fool. Your total income was ${income_result.total_income:.2f}. You needed ${retirement_expenses:.2f}. You had {death - y} years left")
+            broke = True
+
     return result

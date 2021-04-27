@@ -50,24 +50,27 @@ def plot_investment(ir: investment.InvestmentResult, age: int, retire: int, ax0,
     print("=== dead ===")
     print(f"Total taxes paid = ${ir.get_taxes_paid().sum():,.2f}")
     print(f"Total income = ${ir.get_total_incomes().sum():,.2f}")
-    print(f"")
+    final_trad_assets = ir.get_total_trad_assets()[-1] - single_tax_bracket_2021.tax(ir.get_total_trad_assets()[-1]).tax_paid
+    print(f"Sum = ${final_trad_assets + ir.get_total_roth_assets()[-1] + ir.get_total_incomes().sum():,.2f}")
 
 
 def test_investment():
     age = 25
     retire = 65
     die = 90
-    income = 30000
-    rate = 8
-    split = 6.5
-    ir_roth = investment.simple_invest(income, single_tax_bracket_2021, retirement=retire - age, death=die - age, trad_alloc_percent=0, roth_alloc_percent=split, return_rate=rate)
-    ir_trad = investment.simple_invest(income, single_tax_bracket_2021, retirement=retire - age, death=die - age, trad_alloc_percent=split, roth_alloc_percent=0, return_rate=rate)
-    ir_5050 = investment.simple_invest(income, single_tax_bracket_2021, retirement=retire - age, death=die - age, trad_alloc_percent=split/2, roth_alloc_percent=split/2, return_rate=rate)
+    income = 100000
+    rate = 7
+    split = 8
+    percent_salary_expenses = 90
+    kw = {"retirement": retire - age, "death": die - age, "return_rate": rate, "retirement_expenses_percent": percent_salary_expenses}
+    ir_roth = investment.simple_invest(income, single_tax_bracket_2021, trad_alloc_percent=0, roth_alloc_percent=split, **kw)
+    ir_trad = investment.simple_invest(income, single_tax_bracket_2021, trad_alloc_percent=split, roth_alloc_percent=0, **kw)
+    ir_5050 = investment.simple_invest(income, single_tax_bracket_2021, trad_alloc_percent=split/2, roth_alloc_percent=split/2, **kw)
     fig, (ax0, ax1, ax2, ax3, ax4) = plt.subplots(5, 1)
     plot_investment(ir_roth, age, retire, ax0, ax1, ax2, ax3, ax4, "Roth")
     plot_investment(ir_trad, age, retire, ax0, ax1, ax2, ax3, ax4, "Trad")
     plot_investment(ir_5050, age, retire, ax0, ax1, ax2, ax3, ax4, "50/50")
-    # plt.show()
+    plt.show()
 
 
 test_investment()
