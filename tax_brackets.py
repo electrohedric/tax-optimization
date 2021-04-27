@@ -101,6 +101,9 @@ class TaxBracket:
             tax.breakdown.append(amount)
             tax.tax_paid += amount
         return tax
+    
+    def __str__(self):
+        return self.__class__.__name__ + "\n" + "\n".join([str(x) for x in self.tax_ranges])
 
 
 ZERO_TAX = TaxBracket(TaxRange(0, float('inf'), 0))

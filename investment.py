@@ -56,37 +56,37 @@ class InvestmentResult:
         """
         return self.year_results[-1].net_worth()
     
-    def get_years(self) -> np.ndarray[int]:
+    def get_years(self) -> np.ndarray:
         """
         :return: array of integer years from [0, dead)
         """
         return np.array([x.year for x in self])
     
-    def get_net_worths(self) -> np.ndarray[float]:
+    def get_net_worths(self) -> np.ndarray:
         """
         :return: array of the net worth from each year
         """
         return np.array([x.net_worth() for x in self])
 
-    def get_total_roth_assets(self) -> np.ndarray[float]:
+    def get_total_roth_assets(self) -> np.ndarray:
         """
         :return: array of the ending balance of the roth account from each year
         """
         return np.array([x.growth[AccountType.ROTH].end_amount for x in self])
 
-    def get_total_trad_assets(self) -> np.ndarray[float]:
+    def get_total_trad_assets(self) -> np.ndarray:
         """
         :return: array of the ending balance of the traditional account from each year
         """
         return np.array([x.growth[AccountType.TRAD].end_amount for x in self])
     
-    def get_taxes_paid(self) -> np.ndarray[float]:
+    def get_taxes_paid(self) -> np.ndarray:
         """
         :return: array of the tax paid on total income from each year
         """
         return np.array([x.income.income_tax.tax_paid for x in self])
 
-    def get_total_incomes(self) -> np.ndarray[float]:
+    def get_total_incomes(self) -> np.ndarray:
         """
         :return: array of total income from each year
         """

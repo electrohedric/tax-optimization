@@ -3,19 +3,10 @@ import sys
 import matplotlib.pyplot as plt
 
 import investment
-from tax_brackets import TaxBracket, TaxRange
+from loader import load_tax_bracket
 
-single_tax_ranges_2021 = (
-    TaxRange(0, 9950, 0.10),
-    TaxRange(9950, 40525, 0.12),
-    TaxRange(40525, 86375, 0.22),
-    TaxRange(86375, 164925, 0.24),
-    TaxRange(164925, 209425, 0.32),
-    TaxRange(209425, 523600, 0.35),
-    TaxRange(523600, float('inf'), 0.37),
-)
-single_tax_bracket_2021 = TaxBracket(*single_tax_ranges_2021)
 standard_deduction_2021 = 12550.00
+single_tax_bracket_2021 = load_tax_bracket("data/2021/single_tax.csv")
 
 
 def test_tax_bracket():
