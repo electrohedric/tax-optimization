@@ -1,6 +1,6 @@
-from typing import Dict
-
 from enum import IntEnum
+from typing import Tuple, Iterable
+
 import numpy as np
 
 from tax_brackets import TaxBracket
@@ -10,14 +10,16 @@ class AccountType(IntEnum):
     """
     A hard value to specify an account type for dictionaries, etc.
     """
+    OTHER = -1
     TRAD = 0
     ROTH = 1
+    BROKERAGE = 2
 
 
 class BalanceChangeResult:
     def __init__(self, start_amount: float, change_amount: float):
         """
-        Describes a change in the balance of an account
+        Describes a change in the balance of an account; either a deposit or withdrawl
 
         :param start_amount: starting amount before transaction
         :param change_amount: amount to move into/from the account. positive for deposit, negative for withdrawl
@@ -98,15 +100,17 @@ class InvestmentResult:
 
 
 class Account:
-    def __init__(self, initial_amount: float = 0):
+    def __init__(self, initial_amount: float = 0, account_label: AccountType = AccountType.OTHER):
         """
         An account which simply holds an amount of money and can perform
         simple actions such as depositing and withdrawing.
         Primary use is to have Result objects which perform actions and contain the results of those actions.
 
         :param initial_amount: starting amount of the account
+        :param account_label: label to put on the account for sorting purposes.
         """
         self.amount = initial_amount
+        self.label = account_label
     
     def grow(self, return_rate: float) -> GrowthResult:
         """
@@ -147,71 +151,143 @@ class Account:
         :return: BalanceChangeResult containing ending amount
         """
         return self._change(-amount)
-
-
-class Contribution:
-    def __init__(self, account: Account, amount: float):
-        """
-        Describes an account contribution. Can perform a deposit of a specified amount to an account.
-        Does not actually perform a deposit until put() is called
-
-        :param account: account to access
-        :param amount: amount to add
-        """
-        self.account = account
-        self.amount = amount
     
-    def put(self) -> BalanceChangeResult:
+    def has(self, amount: float):
         """
-        Performs a deposit of the pre-specified amount to the account.
-        Can be called multiple times to put the same amount
-
-        :return: BalanceChangeResult from the deposit
+        Determines if the amount can be taken out of the account without going negative
+        
+        :param amount: amount to test
+        :return: True if at least amount is in the account, False otherwise
         """
-        return self.account.deposit(self.amount)
-
-
-class Distribution:
-    def __init__(self, account: Account, amount: float):
-        """
-        Describes an account distribution. Can perform a withdrawl of a specified amount from an account.
-        Does not actually form a withdrawl until take() is called
-
-        :param account: account to access
-        :param amount: amount to withdraw
-        """
-        self.account = account
-        self.amount = amount
+        return amount <= self.amount
     
-    def take(self) -> BalanceChangeResult:
+    def create_contribution(self, amount: float) -> 'Account.Contribution':
         """
-        Performs a withdrawl of the pre-specified amount from the account.
-        Can be called mulitple times to take the same amount
-
-        :return: BalanceChangeResult from the withdrawl
+        Helper method to generate a basic tax-free contribution.
+        Ensures the amount contributed is positive
+        
+        :param amount: contribution allocation amount
+        :return: a contribution matching the amount
         """
-        return self.account.withdraw(self.amount)
-
-
-class Growth:
-    def __init__(self, account: Account, return_rate: float):
-        """
-        Describes account growth for a period. Can perform growth at a specified return rate.
-        Does not actually grow the account until grow() is called. See GrowthResult details on how growth is done
-
-        :param account: account to access
-        :param return_rate: rate to grow the account. See GrowthResult for more details
-        """
-        self.account = account
-        self.return_rate = return_rate
+        return Account.Contribution(self, max(amount, 0))
     
-    def grow(self) -> GrowthResult:
+    def create_distribution(self, amount: float) -> 'Account.Distribution':
         """
-        Performs a growth of the account at the pre-specified return rate
+        Helper method to generate a basic tax-free distribution
+        Ensures a distribution will never take out more money than is in the account.
+        Also ensures the amount distributed is positive\n
+        Allocation is == distribution.amount
+        
+        :param amount: amount to take in distributions
+        :return: a distribution matching the amount, or possibly less if there was not enough money
+        """
+        return Account.Distribution(self, min(max(self.amount, 0), amount))
+    
+    def create_roth_contribution(self, amount: float, tax_bracket: TaxBracket, margin: float) -> 'Account.Contribution':
+        """
+        Helper method to generate a traditional distribution and finds the allocation amount to take out 'amount'
 
-        :return: GrowthResult from the growth
+        :param amount: contribution allocation amount
+        :param tax_bracket: tax bracket to use to do tax calculations
+        :param margin: margin to pass into the tax function.
+            should be set so that this is taxed at the highest margin (most likely = expenses)
+        :return: a distribution matching the amount
         """
-        return self.account.grow(self.return_rate)
+        assert self.label == AccountType.ROTH
+        # compute tax on allocation
+        roth_tax = tax_bracket.tax(amount, 0, margin)
+        return Account.Contribution(self, roth_tax.remaining())
+    
+    def create_trad_distribution(self, amount: float, tax_bracket: TaxBracket, below_the_line: float) -> Tuple['Account.Distribution', float]:
+        """
+        Helper method to generate a traditional distribution and finds the allocation amount to take out 'amount'
+
+        :param amount: amount to take in distributions
+        :param tax_bracket: tax bracket to use to do tax calculations
+        :param below_the_line: sum of below the line deductions
+        :return: a distribution matching the amount
+        """
+        assert self.label == AccountType.TRAD
+        # test can't allocate more than in trad account
+        trad_dist_alloc = tax_bracket.reverse_tax(amount, below_the_line)
+        if self.amount < trad_dist_alloc:  # can't take out full amount in trad
+            # allocation is the full amount in the account
+            trad_dist_alloc = self.amount
+            # recompute the actual distributable amount
+            amount = trad_dist_alloc - tax_bracket.tax(trad_dist_alloc, below_the_line).tax_paid
+        return Account.Distribution(self, amount), trad_dist_alloc
+    
+    def create_growth(self, return_rate: float):
+        """
+        Helper method to generate tax-free growth.
+        Basically a wrapper around Account.Growth
+        
+        :param return_rate: rate to grow the account. 1.0 is 100% growth. See GrowthResult for more details
+        :return: a growth with the return rate
+        """
+        return Account.Growth(self, return_rate)
+    
+    class Contribution:
+        def __init__(self, account: 'Account', amount: float):
+            """
+            Describes an account contribution. Can perform a deposit of a specified amount to an account.
+            Does not actually perform a deposit until put() is called
+
+            :param account: account to access
+            :param amount: amount to add
+            """
+            self.account = account
+            self.amount = amount
+        
+        def put(self) -> BalanceChangeResult:
+            """
+            Performs a deposit of the pre-specified amount to the account.
+            Can be called multiple times to put the same amount
+
+            :return: BalanceChangeResult from the deposit
+            """
+            return self.account.deposit(self.amount)
+    
+    class Distribution:
+        def __init__(self, account: 'Account', amount: float):
+            """
+            Describes an account distribution. Can perform a withdrawl of a specified amount from an account.
+            Does not actually form a withdrawl until take() is called
+
+            :param account: account to access
+            :param amount: amount to withdraw
+            """
+            self.account = account
+            self.amount = amount
+        
+        def take(self) -> BalanceChangeResult:
+            """
+            Performs a withdrawl of the pre-specified amount from the account.
+            Can be called mulitple times to take the same amount
+
+            :return: BalanceChangeResult from the withdrawl
+            """
+            return self.account.withdraw(self.amount)
+    
+    class Growth:
+        def __init__(self, account: 'Account', return_rate: float):
+            """
+            Describes account growth for a period. Can perform growth at a specified return rate.
+            Does not actually grow the account until grow() is called. See GrowthResult details on how growth is done
+
+            :param account: account to access
+            :param return_rate: rate to grow the account. See GrowthResult for more details
+            """
+            self.account = account
+            self.return_rate = return_rate
+        
+        def grow(self) -> GrowthResult:
+            """
+            Performs a growth of the account at the pre-specified return rate
+
+            :return: GrowthResult from the growth
+            """
+            return self.account.grow(self.return_rate)
 
 
 class IncomeResult:
@@ -238,11 +314,11 @@ class IncomeResult:
         self.agi = self.gross_income - trad_cont_amount
         """adjusted gross income. salary + traditional distrubtions"""
 
-        self.taxable_income = self.gross_income - self.deductions
-        """gross income - tax deductions"""
-
-        self.income_tax = tax_bracket.tax(self.taxable_income)
+        self.income_tax = tax_bracket.tax(self.gross_income, self.deductions)
         """tax result for the taxable income"""
+
+        self.taxable_income = self.income_tax.real_taxable_amount()
+        """gross income - tax deductions"""
 
         self.net_income = self.gross_income - self.income_tax.tax_paid
         """income after taxes. gross income - tax paid on income"""
@@ -253,9 +329,9 @@ class IncomeResult:
 
 class InvestmentYearResult:
     def __init__(self, year: int,
-                 contributions: Dict[AccountType, Contribution],
-                 distributions: Dict[AccountType, Distribution],
-                 growths: Dict[AccountType, Growth],
+                 contributions: Iterable[Account.Contribution],
+                 distributions: Iterable[Account.Distribution],
+                 growths: Iterable[Account.Growth],
                  income_result: IncomeResult):
         """
         Result from a single investment year. Contains information about all distributions and contributions
@@ -267,9 +343,9 @@ class InvestmentYearResult:
         :param income_result: IncomeResult detailing income
         """
         self.year = year
-        self.contributions = [c.put() for c in contributions.values()]
-        self.distributions = [d.take() for d in distributions.values()]
-        self.growth = [g.grow() for g in growths.values()]
+        self.contributions = [c.put() for c in contributions]
+        self.distributions = [d.take() for d in distributions]
+        self.growth = [g.grow() for g in growths]
         self.income = income_result
     
     def net_worth(self) -> float:
@@ -326,37 +402,31 @@ def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: i
     :param roth_start: starting amount in roth account
     :return: InvestmentResult containing breakdown of all years
     """
-    trad_account = Account(trad_start)
-    roth_account = Account(roth_start)
+    trad_account = Account(trad_start, AccountType.TRAD)
+    roth_account = Account(roth_start, AccountType.ROTH)
     salary = Account(starting_salary)  # keep track of current salary
-    salary_growth = Growth(salary, salary_raise_rate / 100)
-    trad_growth = Growth(trad_account, return_rate / 100)
-    roth_growth = Growth(roth_account, return_rate / 100)
+    salary_growth = salary.create_growth(salary_raise_rate / 100)
+    trad_growth = trad_account.create_growth(return_rate / 100)
+    roth_growth = roth_account.create_growth(return_rate / 100)
     expenses_percent = 100 - (trad_alloc_percent + roth_alloc_percent)
     result = InvestmentResult()
     for y in range(retirement):
         # determine amount of salary to allocate
         trad_alloc = salary.amount * trad_alloc_percent / 100
         roth_alloc = salary.amount * roth_alloc_percent / 100
-        
         expenses = salary.amount * expenses_percent / 100
-        
-        # compute tax on allocations
-        trad_tax_contr_alloc = trad_alloc
-        roth_tax_contr_alloc = tax_bracket.tax(roth_alloc, expenses)
-        
-        # compute how much is contributions to roth and traditional accounts
-        trad_cont = Contribution(trad_account, trad_tax_contr_alloc)  # == trad_dist
-        roth_cont = Contribution(roth_account, roth_alloc - roth_tax_contr_alloc.tax_paid)
-        
+    
+        # compute contributions to roth and traditional accounts
+        trad_cont = trad_account.create_contribution(trad_alloc)
+        roth_cont = roth_account.create_roth_contribution(roth_alloc, tax_bracket, expenses)
+    
         # compute income
         income_result = IncomeResult(salary.amount, below_the_line, trad_cont.amount, 0, 0, tax_bracket)
-        
+    
         # run investment year
-        year_result = InvestmentYearResult(y, {AccountType.TRAD: trad_cont, AccountType.ROTH: roth_cont}, {},
-                                           {AccountType.TRAD: trad_growth, AccountType.ROTH: roth_growth}, income_result)
+        year_result = InvestmentYearResult(y, [trad_cont, roth_cont], [], [trad_growth, roth_growth], income_result)
         result.year_results.append(year_result)
-        
+    
         # get a raise. do this outside so it doesn't count it in the total amount
         salary_growth.grow()
     
@@ -364,46 +434,28 @@ def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: i
 
     retirement_expenses = salary.amount * retirement_expenses_percent / 100
 
-    # total_alloc_percent = roth_alloc_percent + trad_alloc_percent
-    # trad_dist_ratio = trad_alloc_percent / total_alloc_percent
-    # roth_dist_ratio = roth_alloc_percent / total_alloc_percent
     broke = False
-
     for y in range(retirement, death):
         # run years until we die. nothing being invested, but accounts still grow
-        # roth_dist_alloc == roth_dist
-
-        # determine amount to take in distributions
-        trad_dist_amount = retirement_expenses
-        # test can't allocate more than in trad account
-        trad_dist_alloc = tax_bracket.reverse_tax(trad_dist_amount, below_the_line)
-        if trad_account.amount < trad_dist_alloc:  # can't take out full amount in trad
-            trad_dist_alloc = trad_account.amount
-            trad_dist_amount = trad_dist_alloc - tax_bracket.tax(trad_dist_alloc - below_the_line).tax_paid
-            trad_dist = Distribution(trad_account, trad_dist_amount)
-        else:  # take out expenses from trad
-            trad_dist = Distribution(trad_account, trad_dist_amount)
-
-        # if traditional can cover expenses, use all trad
-        if trad_dist.amount < retirement_expenses:
-            # take out roth too
-            # test can't allocate more than in roth account
-            roth_dist_amount = retirement_expenses - trad_dist.amount
-            if roth_account.amount < roth_dist_amount:
-                roth_dist_amount = roth_account.amount
-            roth_dist = Distribution(roth_account, roth_dist_amount)
-            roth_dist_alloc = roth_dist.amount
-        else:
-            roth_dist = Distribution(roth_account, 0)
-            roth_dist_alloc = 0
-
+    
+        # compute distributions from roth and traditional accounts
+        trad_dist, trad_dist_alloc = trad_account.create_trad_distribution(retirement_expenses, tax_bracket, below_the_line)
+        needed_roth_dist_amount = retirement_expenses - trad_dist.amount
+        # if traditional can cover expenses, this will be 0
+        roth_dist = roth_account.create_distribution(needed_roth_dist_amount)
+        roth_dist_alloc = roth_dist.amount
+    
+        # compute income
         income_result = IncomeResult(0, below_the_line, 0, trad_dist_alloc, roth_dist_alloc, tax_bracket)
-        year_result = InvestmentYearResult(y, {}, {AccountType.TRAD: trad_dist, AccountType.ROTH: roth_dist},
-                                           {AccountType.TRAD: trad_growth, AccountType.ROTH: roth_growth}, income_result)
+    
+        # run investment year
+        year_result = InvestmentYearResult(y, [], [trad_dist, roth_dist], [trad_growth, roth_growth], income_result)
         result.year_results.append(year_result)
-
+    
+        # see if broke
         if income_result.total_income < retirement_expenses - 0.001 and not broke:
-            print(f"You're broke, fool. Your total income was ${income_result.total_income:.2f}. You needed ${retirement_expenses:.2f}. You had {death - y} years left")
+            print(f"You're broke, fool. Your total income was ${income_result.total_income:.2f}. "
+                  f"You needed ${retirement_expenses:.2f}. You had {death - y} years left")
             broke = True
 
     return result

@@ -1,3 +1,5 @@
+from typing import List
+
 
 class TaxRange:
     def __init__(self, lower_bound: float, upper_bound: float, percent: float):
@@ -46,19 +48,42 @@ class TaxResult:
         """
         Contains all tax information for a Tax Bracket
         """
-        self.taxable_amount = 0
-        self.margin = 0
-        self.tax_paid = 0
-        self.breakdown = []
     
+        self.full_amount = 0
+        """Full amount, not including deductions"""
+    
+        self.taxable_amount = 0
+        """Amount including deductions which was the actual amount sent through the tax bracket"""
+    
+        self.margin = 0
+        """Amount taxable amount was increased by to raise the bracket"""
+    
+        self.tax_paid = 0
+        """Total amount of taxes paid on the taxable amount"""
+    
+        self.breakdown: List[float] = []
+        """Contains the breakdown of how much each tax range contributed to the final taxed amount.
+            Index 0 corresponds to the zeroth tax range in the tax bracket used"""
+
+    def remaining(self):
+        """
+        :return: Amount left over after taxes are taken out
+        """
+        return self.full_amount - self.tax_paid
+
     def real_taxable_amount(self) -> float:
+        """
+        :return: non-negative taxable amount
+        """
         return max(self.taxable_amount, 0)
 
-    def effective_tax_rate(self) -> float:
-        return self.tax_paid / self.taxable_amount
-
     def real_effective_tax_rate(self) -> float:
-        return max(self.effective_tax_rate(), 0)
+        """
+        :return: non-negative effective tax rate (taxes paid / full amount)
+        """
+        if self.full_amount == 0:
+            return 0
+        return self.tax_paid / self.full_amount
 
 
 class TaxBracket:
@@ -78,38 +103,57 @@ class TaxBracket:
         for i in range(len(self.tax_ranges) - 1):
             assert self.tax_ranges[i].upper_bound == self.tax_ranges[i + 1].lower_bound, "Gap between lower and upper bounds"
 
-    def tax(self, taxable_amount: float, margin: float = 0) -> TaxResult:
+    def tax(self, full_amount: float, deduction: float, margin: float = 0) -> TaxResult:
         """
         Computes the amount of tax deducted from the amount in a step pattern.
         The amount of money within the first range is deducted at it's taxable
         percent, moving onto subsequent ranges until all tax has been computed.
 
-        :param taxable_amount: total amount of money to tax
+        :param full_amount: amount to tax (like income) without any deductions
+        :param deduction: amount to subtract from 'full_amount' where 'full_amount' - this == taxable amount
         :param margin: amount to move the taxable amount up the bracket by. everything under the margin is taxed at 0%.
             thus: tax(a, margin=m) == tax(a+m) - tax(a)
-        :return: amount taxed
+        :return: amount taxed as a nice result with full breakdown
         """
         tax = TaxResult()
-        tax.taxable_amount = taxable_amount
+        tax.full_amount = full_amount
+        tax.taxable_amount = full_amount - deduction
         tax.margin = margin
+        if tax.taxable_amount <= 0:  # can't tax a non-positive amount
+            return tax
         for tr in self.tax_ranges:
-            if tr.amount_in_range(taxable_amount + margin) == 0.0:
+            if tr.amount_in_range(tax.taxable_amount + margin) == 0.0:
                 break  # no more can possibly be taxed since there's no money in the range and ranges always increase
-            amount = tr.tax(taxable_amount + margin) - tr.tax(margin)
+            amount = tr.tax(tax.taxable_amount + margin) - tr.tax(margin)
             tax.breakdown.append(amount)
             tax.tax_paid += amount
         return tax
 
-    def reverse_tax(self, final_amount: float, deduction: float):
-        EPSILON = 1e-12
+    def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-12, iters=50):
+        """
+        Computes the reverse of a tax using a newton-like recursive method.
+        i.e. the amount of money that needs to be taxed to result in 'final_amount' leftover.
+        In other words: tax(?) == 'final_amount'
+        
+        :param final_amount: amount required to be left over after tax is taken out
+        :param deduction: deduction to take out of tax (likely is standard deduction)
+        :param margin: amount to move the taxable amount up the bracket by. everything under the margin is taxed at 0%.
+            thus: tax(a, margin=m) == tax(a+m) - tax(a)
+        :param epsilon: fine-grainness of the result.
+        :param iters: maximum number of iterations before returning the final answer.
+            Most reasonable epsilons result in around 12 iters on average
+        :return:
+        """
         guess = final_amount
-        for i in range(50):
-            leftover = guess - self.tax(guess - deduction).tax_paid
+        for i in range(iters):
+            leftover = guess - self.tax(guess, deduction, margin).tax_paid
             off = final_amount - leftover
             guess += off
-            if abs(off) < EPSILON:
+            if abs(off) < epsilon:
                 return guess
-        raise ValueError
+        # U+03B5 is epsilon
+        print(f"Could not find solution to tax(?, {deduction=}, {margin=}) == {final_amount} with \u03B5={epsilon} after {iters} iters")
+        return guess
 
     def __str__(self):
         return self.__class__.__name__ + "\n" + "\n".join([str(x) for x in self.tax_ranges])

@@ -17,7 +17,7 @@ def test_tax_bracket():
         except ValueError:
             print("Quit")
             sys.exit()
-        tax = single_tax_bracket_2021.tax(amount - max(deduction, standard_deduction_2021))
+        tax = single_tax_bracket_2021.tax(amount, max(deduction, standard_deduction_2021))
         print(f"${tax.tax_paid:.2f} of ${tax.real_taxable_amount():.2f} taxed")
         for i in range(len(tax.breakdown)):
             print(f"{single_tax_bracket_2021.tax_ranges[i]} = {tax.breakdown[i]}")
@@ -50,7 +50,7 @@ def plot_investment(ir: investment.InvestmentResult, age: int, retire: int, ax0,
     print("=== dead ===")
     print(f"Total taxes paid = ${ir.get_taxes_paid().sum():,.2f}")
     print(f"Total income = ${ir.get_total_incomes().sum():,.2f}")
-    final_trad_assets = ir.get_total_trad_assets()[-1] - single_tax_bracket_2021.tax(ir.get_total_trad_assets()[-1]).tax_paid
+    final_trad_assets = ir.get_total_trad_assets()[-1] - single_tax_bracket_2021.tax(ir.get_total_trad_assets()[-1], 0).tax_paid
     print(f"Sum = ${final_trad_assets + ir.get_total_roth_assets()[-1] + ir.get_total_incomes().sum():,.2f}")
 
 

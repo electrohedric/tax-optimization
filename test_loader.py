@@ -17,4 +17,5 @@ class Test(TestCase):
         )
         single_tax_bracket_2021_h = tax_brackets.TaxBracket(*single_tax_ranges_2021)
         single_tax_bracket_2021_f = loader.load_tax_bracket("data/2021/single_tax.csv")
+        # FIXME: sloppily using str for equality checks
         self.assertEqual(str(single_tax_bracket_2021_h), str(single_tax_bracket_2021_f))
