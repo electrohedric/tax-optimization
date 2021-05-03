@@ -81,12 +81,25 @@ class InvestmentResult:
         :return: array of the ending balance of the traditional account from each year
         """
         return np.array([x.growth[AccountType.TRAD].end_amount for x in self])
-    
+
     def get_taxes_paid(self) -> np.ndarray:
         """
         :return: array of the tax paid on total income from each year
         """
         return np.array([x.income.income_tax.tax_paid for x in self])
+
+    def get_total_trad_assets_post_tax(self, tax_bracket: TaxBracket) -> np.ndarray:
+        """
+        Computes total net worth after tax is taken out on traditional
+        
+        :param tax_bracket: tax function to use to tax
+        :return: array of the net worth after taxes are taken out from each year,
+            assuming full amount is taken as distributions (no deductions are taken, rough calculation)
+        """
+        trad = self.get_total_trad_assets()
+        vfunc = np.vectorize(lambda x: tax_bracket.tax(x, 0).remaining())
+        trad_taxed = vfunc(trad)
+        return trad_taxed
 
     def get_total_incomes(self) -> np.ndarray:
         """
@@ -308,6 +321,9 @@ class IncomeResult:
         self.deductions = trad_cont_amount + below_the_line
         """sum of above the line + below the line deductions"""
 
+        self.salary = salary_amount
+        """salary before deductions"""
+
         self.gross_income = salary_amount + trad_dist_alloc_amount
         """taxable income before deductions. salary + traditional distributions"""
 
@@ -343,34 +359,34 @@ class InvestmentYearResult:
         :param income_result: IncomeResult detailing income
         """
         self.year = year
-        self.contributions = [c.put() for c in contributions]
-        self.distributions = [d.take() for d in distributions]
-        self.growth = [g.grow() for g in growths]
+        self.contributions = {c.account.label: c.put() for c in contributions}
+        self.distributions = {d.account.label: d.take() for d in distributions}
+        self.growth = {g.account.label: g.grow() for g in growths}
         self.income = income_result
     
     def net_worth(self) -> float:
         """
         :return: sum of ending amounts of all accounts at the end of the growth period, not including income
         """
-        return sum([x.end_amount for x in self.growth])
+        return sum([x.end_amount for x in self.growth.values()])
     
     def total_contributions(self) -> float:
         """
         :return: sum of all contributions made to all investment accounts
         """
-        return sum([x.change_amount for x in self.contributions])
+        return sum([x.change_amount for x in self.contributions.values()])
     
     def total_distributions(self) -> float:
         """
         :return: sum of all distributions taken from all investment accounts
         """
-        return sum([-x.change_amount for x in self.distributions])
+        return sum([-x.change_amount for x in self.distributions.values()])
     
     def total_growth(self) -> float:
         """
         :return: sum of all interest gained on all investment accounts
         """
-        return sum([x.interest for x in self.growth])
+        return sum([x.interest for x in self.growth.values()])
 
 
 def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
