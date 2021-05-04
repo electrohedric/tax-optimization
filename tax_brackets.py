@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 
@@ -129,7 +130,7 @@ class TaxBracket:
             tax.tax_paid += amount
         return tax
 
-    def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-12, iters=50):
+    def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-5, iters=50):
         """
         Computes the reverse of a tax using a newton-like recursive method.
         i.e. the amount of money that needs to be taxed to result in 'final_amount' leftover.
@@ -152,7 +153,7 @@ class TaxBracket:
             if abs(off) < epsilon:
                 return guess
         # U+03B5 is epsilon
-        print(f"Could not find solution to tax(?, {deduction=}, {margin=}) == {final_amount} with \u03B5={epsilon} after {iters} iters")
+        logging.warning(f"Could not find solution to tax(?, {deduction=}, {margin=}) == {final_amount} with \u03B5={epsilon} after {iters} iters")
         return guess
 
     def __str__(self):

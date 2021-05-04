@@ -1,3 +1,4 @@
+import logging
 from enum import IntEnum
 from typing import Tuple, Iterable
 
@@ -178,11 +179,13 @@ class Account:
         """
         Helper method to generate a basic tax-free contribution.
         Ensures the amount contributed is positive
+        Also ensure the amount contributed is not over the maximum contribution for the account type
         
         :param amount: contribution allocation amount
         :return: a contribution matching the amount
         """
-        return Account.Contribution(self, max(amount, 0))
+        max_cont = Account.Contribution.LIMITS.get(self.label) or float('inf')
+        return Account.Contribution(self, min(max(amount, 0), max_cont))
     
     def create_distribution(self, amount: float) -> 'Account.Distribution':
         """
@@ -209,7 +212,8 @@ class Account:
         assert self.label == AccountType.ROTH
         # compute tax on allocation
         roth_tax = tax_bracket.tax(amount, 0, margin)
-        return Account.Contribution(self, roth_tax.remaining())
+        max_cont = Account.Contribution.LIMITS.get(self.label)
+        return Account.Contribution(self, min(roth_tax.remaining(), max_cont))
     
     def create_trad_distribution(self, amount: float, tax_bracket: TaxBracket, below_the_line: float) -> Tuple['Account.Distribution', float]:
         """
@@ -241,6 +245,8 @@ class Account:
         return Account.Growth(self, return_rate)
     
     class Contribution:
+        LIMITS = {AccountType.TRAD: 29100, AccountType.ROTH: 66600}
+
         def __init__(self, account: 'Account', amount: float):
             """
             Describes an account contribution. Can perform a deposit of a specified amount to an account.
@@ -389,19 +395,103 @@ class InvestmentYearResult:
         return sum([x.interest for x in self.growth.values()])
 
 
+def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40,
+                 death: int = 60, retirement_expenses_percent: float = 70, below_the_line: float = 12550,
+                 salary_raise_rate: float = 1, investment_return_rate: float = 7, total_alloc_percent: float = 8,
+                 trad_start: float = 0, roth_start: float = 0) -> InvestmentResult:
+    """
+
+    :param percentages: % of total allocation traditional contributions
+    :param starting_salary:
+    :param tax_bracket:
+    :param retirement:
+    :param death:
+    :param retirement_expenses_percent:
+    :param below_the_line:
+    :param salary_raise_rate:
+    :param investment_return_rate:
+    :param total_alloc_percent:
+    :param trad_start:
+    :param roth_start:
+    :return:
+    """
+    trad_account = Account(trad_start, AccountType.TRAD)
+    roth_account = Account(roth_start, AccountType.ROTH)
+    salary = Account(starting_salary)  # keep track of current salary
+    salary_growth = salary.create_growth(salary_raise_rate / 100)
+    trad_growth = trad_account.create_growth(investment_return_rate / 100)
+    roth_growth = roth_account.create_growth(investment_return_rate / 100)
+    expenses_percent = 100 - total_alloc_percent
+    result = InvestmentResult()
+    for y in range(retirement):
+        trad_alloc_percent = percentages[y] * total_alloc_percent
+        roth_alloc_percent = total_alloc_percent - trad_alloc_percent
+
+        # determine amount of salary to allocate
+        trad_alloc = salary.amount * trad_alloc_percent / 100
+        roth_alloc = salary.amount * roth_alloc_percent / 100
+        expenses = salary.amount * expenses_percent / 100
+
+        # compute contributions to roth and traditional accounts
+        trad_cont = trad_account.create_contribution(trad_alloc)
+        roth_cont = roth_account.create_roth_contribution(roth_alloc, tax_bracket, expenses)
+
+        # compute income
+        income_result = IncomeResult(salary.amount, below_the_line, trad_cont.amount, 0, 0, tax_bracket)
+
+        # run investment year
+        year_result = InvestmentYearResult(y, [trad_cont, roth_cont], [], [trad_growth, roth_growth], income_result)
+        result.year_results.append(year_result)
+
+        # get a raise. do this outside so it doesn't count it in the total amount
+        salary_growth.grow()
+
+    # retirement
+
+    retirement_expenses = salary.amount * retirement_expenses_percent / 100
+
+    broke = False
+    for y in range(retirement, death):
+        # run years until we die. nothing being invested, but accounts still grow
+
+        # compute distributions from roth and traditional accounts
+        trad_dist, trad_dist_alloc = trad_account.create_trad_distribution(retirement_expenses, tax_bracket,
+                                                                           below_the_line)
+        needed_roth_dist_amount = retirement_expenses - trad_dist.amount
+        # if traditional can cover expenses, this will be 0
+        roth_dist = roth_account.create_distribution(needed_roth_dist_amount)
+        roth_dist_alloc = roth_dist.amount
+
+        # compute income
+        income_result = IncomeResult(0, below_the_line, 0, trad_dist_alloc, roth_dist_alloc, tax_bracket)
+
+        # run investment year
+        year_result = InvestmentYearResult(y, [], [trad_dist, roth_dist], [trad_growth, roth_growth], income_result)
+        result.year_results.append(year_result)
+
+        # see if broke
+        if income_result.total_income < retirement_expenses - 0.001 and not broke:
+            logging.debug(f"You're broke, fool. Your total income was ${income_result.total_income:.2f}. "
+                          f"You needed ${retirement_expenses:.2f}. You had {death - y} years left. "
+                          f"Strategy: {percentages}")
+            broke = True
+
+    return result
+
+
 def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
                   retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 0,
-                  return_rate: float = 7, trad_alloc_percent: float = 5, roth_alloc_percent: float = 5,
-                  trad_start: float = 0, roth_start: float = 0) -> InvestmentResult:
+                  investment_return_rate: float = 7, trad_alloc_percent: float = 5, roth_alloc_percent: float = 5,
+                  trad_start: float = 0, roth_start: float = 0, **_) -> InvestmentResult:
     """
-    Performs a simple investment calculation. Makes several assumptions:
-    1. salary increases steadily
-    2. tax bracket never changes
-    3. retirement age and death are known
-    4. fixed return rate, interest rate, and standard deduction
-    5. roth and traditional allocation percentages are constant
-    6. expenses before retirement is always the amount not invested
-    7. expenses after retirement is fixed after calculating them (this likely to change)
+    Performs a simple investment calculation. Makes several assumptions:\n
+    1. salary increases steadily\n
+    2. tax bracket never changes\n
+    3. retirement age and death are known\n
+    4. fixed return rate, interest rate, and standard deduction\n
+    5. roth and traditional allocation percentages are constant\n
+    6. expenses before retirement is always the amount not invested\n
+    7. expenses after retirement is fixed after calculating them (this likely to change)\n
     this list is non-exhaustive
 
     :param starting_salary: salary to start at age 0
@@ -411,67 +501,47 @@ def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: i
     :param retirement_expenses_percent: percent of net worth from [0, 100] to take every year until you die
     :param below_the_line: standard deduction or any other below the line deduction
     :param salary_raise_rate: adjusted salary raise as a percent (where 1.0 == 1%) every year accounting for inflation
-    :param return_rate: adjusted return rate on all accounts every year accounting for inflation
+    :param investment_return_rate: adjusted return rate on all accounts every year accounting for inflation
     :param trad_alloc_percent: amount of salary as a percent from [0, 100] to put into traditional assets every year
     :param roth_alloc_percent: amount of salary as a percent from [0, 100] to put into roth assets every year
     :param trad_start: starting amount in traditional account
     :param roth_start: starting amount in roth account
     :return: InvestmentResult containing breakdown of all years
     """
-    trad_account = Account(trad_start, AccountType.TRAD)
-    roth_account = Account(roth_start, AccountType.ROTH)
-    salary = Account(starting_salary)  # keep track of current salary
-    salary_growth = salary.create_growth(salary_raise_rate / 100)
-    trad_growth = trad_account.create_growth(return_rate / 100)
-    roth_growth = roth_account.create_growth(return_rate / 100)
-    expenses_percent = 100 - (trad_alloc_percent + roth_alloc_percent)
-    result = InvestmentResult()
-    for y in range(retirement):
-        # determine amount of salary to allocate
-        trad_alloc = salary.amount * trad_alloc_percent / 100
-        roth_alloc = salary.amount * roth_alloc_percent / 100
-        expenses = salary.amount * expenses_percent / 100
-    
-        # compute contributions to roth and traditional accounts
-        trad_cont = trad_account.create_contribution(trad_alloc)
-        roth_cont = roth_account.create_roth_contribution(roth_alloc, tax_bracket, expenses)
-    
-        # compute income
-        income_result = IncomeResult(salary.amount, below_the_line, trad_cont.amount, 0, 0, tax_bracket)
-    
-        # run investment year
-        year_result = InvestmentYearResult(y, [trad_cont, roth_cont], [], [trad_growth, roth_growth], income_result)
-        result.year_results.append(year_result)
-    
-        # get a raise. do this outside so it doesn't count it in the total amount
-        salary_growth.grow()
-    
-    # retirement
+    total = trad_alloc_percent + roth_alloc_percent
+    strategy = np.full(retirement, trad_alloc_percent / total)
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total, trad_start, roth_start)
 
-    retirement_expenses = salary.amount * retirement_expenses_percent / 100
 
-    broke = False
-    for y in range(retirement, death):
-        # run years until we die. nothing being invested, but accounts still grow
-    
-        # compute distributions from roth and traditional accounts
-        trad_dist, trad_dist_alloc = trad_account.create_trad_distribution(retirement_expenses, tax_bracket, below_the_line)
-        needed_roth_dist_amount = retirement_expenses - trad_dist.amount
-        # if traditional can cover expenses, this will be 0
-        roth_dist = roth_account.create_distribution(needed_roth_dist_amount)
-        roth_dist_alloc = roth_dist.amount
-    
-        # compute income
-        income_result = IncomeResult(0, below_the_line, 0, trad_dist_alloc, roth_dist_alloc, tax_bracket)
-    
-        # run investment year
-        year_result = InvestmentYearResult(y, [], [trad_dist, roth_dist], [trad_growth, roth_growth], income_result)
-        result.year_results.append(year_result)
-    
-        # see if broke
-        if income_result.total_income < retirement_expenses - 0.001 and not broke:
-            print(f"You're broke, fool. Your total income was ${income_result.total_income:.2f}. "
-                  f"You needed ${retirement_expenses:.2f}. You had {death - y} years left")
-            broke = True
+def piecewise_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+                     retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 1,
+                     investment_return_rate: float = 7, total_alloc_percent: float = 8, switch_year: int = 20,
+                     trad_start: float = 0, roth_start: float = 0, **_) -> InvestmentResult:
+    strategy = np.append(np.zeros(switch_year), np.ones(retirement - switch_year))
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
+                        trad_start, roth_start)
 
-    return result
+
+def linsweep_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+                    retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 1,
+                    investment_return_rate: float = 7, total_alloc_percent: float = 8, slope_decision: float = 0.5,
+                    trad_start: float = 0, roth_start: float = 0, **_) -> InvestmentResult:
+    starting_roth = slope_decision
+    ending_roth = 1 - slope_decision
+    strategy = np.linspace(1 - starting_roth, 1 - ending_roth, retirement)
+    print(strategy)
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
+                        trad_start, roth_start)
+
+def linsweep2_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+                     retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 1,
+                     investment_return_rate: float = 7, total_alloc_percent: float = 8, switch_year: int = 20,
+                     trad_start: float = 0, roth_start: float = 0, **_) -> InvestmentResult:
+    strategy = np.append(np.linspace(0, 1, switch_year), np.ones(retirement - switch_year))
+    print(strategy)
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
+                        trad_start, roth_start)
