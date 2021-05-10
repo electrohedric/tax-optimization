@@ -28,3 +28,4 @@ def load_tax_bracket(file: str) -> tax_brackets.TaxBracket:
         lb = ub
     taxbracket = tax_brackets.TaxBracket(*ranges)
     return taxbracket
+

@@ -8,6 +8,7 @@ class Test(TestCase):
         """
         Tests the 2021 single tax bracket from all brackets and margins
         """
+        single_tax_bracket_2021_va = loader.load_tax_bracket("data/2021/va_single_tax.csv")
         single_tax_bracket_2021 = loader.load_tax_bracket("data/2021/single_tax.csv")
         standard_deduction_2021 = 12550.00
 

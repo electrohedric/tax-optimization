@@ -1,3 +1,4 @@
+import functools
 import logging
 from typing import List
 
@@ -41,7 +42,7 @@ class TaxRange:
         return self.amount_in_range(taxable_amount) * self.percent
 
     def __str__(self):
-        return f"${self.lower_bound:.2f} -> ${self.upper_bound:.2f} @ {self.percent:.1%}"
+        return f"${self.lower_bound:.2f} -> ${self.upper_bound:.2f} @ {self.percent:.2%}"
 
 
 class TaxResult:
@@ -130,7 +131,8 @@ class TaxBracket:
             tax.tax_paid += amount
         return tax
 
-    def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-5, iters=50):
+    @functools.cache
+    def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-2, iters=20):
         """
         Computes the reverse of a tax using a newton-like recursive method.
         i.e. the amount of money that needs to be taxed to result in 'final_amount' leftover.
@@ -147,7 +149,7 @@ class TaxBracket:
         """
         guess = final_amount
         for i in range(iters):
-            leftover = guess - self.tax(guess, deduction, margin).tax_paid
+            leftover = self.tax(guess, deduction, margin).remaining()
             off = final_amount - leftover
             guess += off
             if abs(off) < epsilon:
@@ -158,6 +160,32 @@ class TaxBracket:
 
     def __str__(self):
         return self.__class__.__name__ + "\n" + "\n".join([str(x) for x in self.tax_ranges])
+
+
+class Tax:
+    def __init__(self, tax_brackets: List[TaxBracket], standard_deductions: List[float]):
+        assert len(tax_brackets) == len(standard_deductions), "Bracket length != SD length"
+        self.tax_brackets = tax_brackets
+        self.standard_deductions = standard_deductions
+
+    def tax(self, full_amount: float) -> float:
+        total_taxed = 0
+        for tb, sd in zip(self.tax_brackets, self.standard_deductions):
+            total_taxed += tb.tax(full_amount, sd).tax_paid
+        return total_taxed
+
+    @functools.cache
+    def reverse_tax(self, final_amount: float, epsilon: float = 1e-2, iters=20):
+        guess = final_amount
+        for i in range(iters):
+            leftover = guess - self.tax(guess)
+            off = final_amount - leftover
+            guess += off
+            if abs(off) < epsilon:
+                return guess
+        # U+03B5 is epsilon
+        logging.warning(f"Could not find solution to tax(?) == {final_amount} with \u03B5={epsilon} after {iters} iters")
+        return guess
 
 
 ZERO_TAX = TaxBracket(TaxRange(0, float('inf'), 0))

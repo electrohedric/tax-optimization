@@ -1,9 +1,11 @@
 import logging
+import math
 from enum import IntEnum
 from typing import Tuple, Iterable
 
 import numpy as np
 
+import loader
 from tax_brackets import TaxBracket
 
 
@@ -395,9 +397,89 @@ class InvestmentYearResult:
         return sum([x.interest for x in self.growth.values()])
 
 
+
+
+class Profile:
+    def __init__(self):
+        self.age = 20
+        self.retire = 60
+        self.die = 100
+        self.income = 30000
+        self.salary_raise_rate = 1
+        self.investment_return_rate = 7
+        self.trad_alloc_percent = 4
+        self.roth_alloc_percent = 4
+        self.percent_salary_expenses = 100
+        self.tax_bracket = loader.load_tax_bracket("data/2021/single_tax.csv")
+
+    def kw(self):
+        return {
+            "starting_salary": self.income,
+            "retirement": self.retire - self.age,
+            "death": self.die - self.age,
+            "investment_return_rate": self.investment_return_rate,
+            "retirement_expenses_percent": self.percent_salary_expenses,
+            "tax_bracket": self.tax_bracket,
+            "below_the_line": 12550,
+            "salary_raise_rate": self.salary_raise_rate,
+            "trad_start": 0,
+            "roth_start": 0
+        }
+
+    def run(self, func, **kwargs):
+        keywords = self.kw()
+        keywords.update(kwargs)
+        return func(**keywords)
+
+    def run_simple_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return simple_invest(**keywords)
+
+    def run_piecewise_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return piecewise_invest(**keywords)
+
+    def run_linsweep_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return linsweep_invest(**keywords)
+
+    def run_linsweep2_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return linsweep2_invest(**keywords)
+
+    def run_linsweep3_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return linsweep3_invest(**keywords)
+
+    def run_linsweep4_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return linsweep4_invest(**keywords)
+
+    def run_quadratic_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return quadratic_invest(**keywords)
+
+    def run_exp_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return exp_invest(**keywords)
+
+    def run_log_invest(self, **kw):
+        keywords = self.kw()
+        keywords.update(kw)
+        return log_invest(**keywords)
+
+
 def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40,
                  death: int = 60, retirement_expenses_percent: float = 70, below_the_line: float = 12550,
-                 salary_raise_rate: float = 1, investment_return_rate: float = 7, total_alloc_percent: float = 8,
+                 salary_raise_rate: float = 1, investment_return_rate: float = 7, total_alloc_percent: float = 10,
                  trad_start: float = 0, roth_start: float = 0) -> InvestmentResult:
     """
 
@@ -531,7 +613,7 @@ def linsweep_invest(starting_salary: float, tax_bracket: TaxBracket, retirement:
     starting_roth = slope_decision
     ending_roth = 1 - slope_decision
     strategy = np.linspace(1 - starting_roth, 1 - ending_roth, retirement)
-    print(strategy)
+    # print(strategy)
     return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
                         below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
                         trad_start, roth_start)
@@ -541,7 +623,129 @@ def linsweep2_invest(starting_salary: float, tax_bracket: TaxBracket, retirement
                      investment_return_rate: float = 7, total_alloc_percent: float = 8, switch_year: int = 20,
                      trad_start: float = 0, roth_start: float = 0, **_) -> InvestmentResult:
     strategy = np.append(np.linspace(0, 1, switch_year), np.ones(retirement - switch_year))
-    print(strategy)
+    # print(strategy)
     return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
                         below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
                         trad_start, roth_start)
+
+def linsweep3_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+                    retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 1,
+                    investment_return_rate: float = 7, total_alloc_percent: float = 8, slope_decision: float = 0.5,
+                    trad_start: float = 0, roth_start: float = 0, **_) -> InvestmentResult:
+    starting_trad = slope_decision
+    ending_roth = 1
+    strategy = np.linspace(starting_trad, 1, retirement)
+    # print(strategy)
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
+                        trad_start, roth_start)
+
+def linsweep4_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+                     retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 1,
+                     investment_return_rate: float = 7, total_alloc_percent: float = 8, switch_year: int = 20,
+                     trad_start: float = 0, roth_start: float = 0, break1: int = 0, **_) -> InvestmentResult:
+    break1 = break1/1000 + .9
+    switch_year2 = switch_year
+
+    strategy = np.append(np.linspace(0, break1, switch_year), np.linspace(break1, 1, (retirement - switch_year)))
+    # print(strategy)
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
+                        trad_start, roth_start)
+
+def quadratic_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+                     retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 1,
+                     investment_return_rate: float = 7, total_alloc_percent: float = 8, switch_year: int = 20,
+                     trad_start: float = 0, roth_start: float = 0, break1: int = 0, **_) -> InvestmentResult:
+    strategy = np.ones(retirement)
+    a = -0.5
+    b = 1
+    c = 0
+    a = (break1+1/retirement)*.1 - 0.5
+    print(f"a is {a}")
+    input1 = np.linspace(0, 1, retirement)
+
+
+    for x in range(retirement):
+        y = (a * (input1[x] * input1[x])) + (b * input1[x]) + c
+        if a == 0:
+            x_vertex = 0
+        else:
+            x_vertex = -b/(2*a)
+
+        y_vertex = (a * (x_vertex * x_vertex)) + (b * x_vertex) + c
+
+        if (a + b + c) == 0:
+            strategy[x] = 0
+        else:
+            strategy[x] = y / (a + b + c)
+    print(strategy)
+
+    # strategy = np.append(np.linspace(0, break1, switch_year), np.linspace(break1, 1, (retirement - switch_year)))
+    # print(strategy)
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
+                        trad_start, roth_start)
+
+def exp_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+                     retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 1,
+                     investment_return_rate: float = 7, total_alloc_percent: float = 8, switch_year: int = 20,
+                     trad_start: float = 0, roth_start: float = 0, break1: int = 0, **_) -> InvestmentResult:
+    strategy = np.ones(retirement)
+    a = -0.5
+
+    a = (break1 * 2) + 0.01
+    print(f"a is {a}")
+    input1 = np.linspace(-5, 0, retirement)
+
+
+    for x in range(retirement):
+        y = a * np.exp(input1[x])
+
+        strategy[x] = (y / a)
+    print(strategy)
+
+    # strategy = np.append(np.linspace(0, break1, switch_year), np.linspace(break1, 1, (retirement - switch_year)))
+    # print(strategy)
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
+                        trad_start, roth_start)
+
+
+def log_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+               retirement_expenses_percent: float = 70, below_the_line: float = 12550, salary_raise_rate: float = 1,
+               investment_return_rate: float = 7, total_alloc_percent: float = 8, switch_year: int = 20,
+               trad_start: float = 0, roth_start: float = 0, break_: int = 0, **_) -> InvestmentResult:
+    a = math.e ** break_
+    print(f"a is {a}")
+
+    def logfunc(x):
+        return math.log(a * x + 1) / math.log(a + 1)
+    nplogfunc = np.vectorize(logfunc)
+    strategy = nplogfunc(np.linspace(0, 1, retirement))
+    print(strategy)
+
+    return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
+                        below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
+                        trad_start, roth_start)
+
+
+def piecewise2_invest(switch_year: int = 20,  switch_duration: int = 30, **kwargs):
+    strategy = np.zeros(switch_year)
+    strategy = np.append(strategy, np.linspace(0, 1, switch_duration))
+    strategy = np.append(strategy, np.ones(kwargs["retirement"] - switch_duration - switch_year))
+    # print(strategy)
+
+    return array_invest(strategy, **kwargs)
+
+
+def erf_invest(a: float = 0.5, switch_year: int = 0, normalize=False, **kwargs):
+    erf = np.vectorize(math.erf)
+    offset = 1 - 2 * (switch_year / kwargs["retirement"])
+    strategy = 0.5 * (1 + erf(np.linspace(-1 + offset, 1 + offset, kwargs["retirement"]) * (40 ** a)))
+    if normalize:
+        strategy -= strategy.min()
+        strategy /= strategy.max()
+    logging.debug(strategy)
+
+    return array_invest(strategy, **kwargs)
