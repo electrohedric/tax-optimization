@@ -201,6 +201,7 @@ class Account:
         """
         return Account.Distribution(self, min(max(self.amount, 0), amount))
     
+
     def create_roth_contribution(self, amount: float, tax_bracket: TaxBracket, margin: float) -> 'Account.Contribution':
         """
         Helper method to generate a traditional distribution and finds the allocation amount to take out 'amount'
