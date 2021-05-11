@@ -1,9 +1,19 @@
+import scipy.optimize
+
+
+def igwad(starting_amount, years, dist, return_rate):
+    amount = starting_amount
+    for y in range(years):
+        amount -= dist
+        amount *= (1 + return_rate)
+    return amount
+
 
 def find_optimal_distribution(starting_amount, return_rate, years, iters=5000, epsilon=0.01):
     # don't ask how we got these numbers
     gamma = 0.8805 * 8629272 ** return_rate  # don't touch it
     kappa = 0.6444 * 1.1543 ** years  # no, seriously, don't
-
+    
     prior_guess = 0
     prior_ending = starting_amount
     for i in range(iters):
@@ -14,10 +24,7 @@ def find_optimal_distribution(starting_amount, return_rate, years, iters=5000, e
         dist = min_dist + guess
 
         # p(f"taking {dist:,.2f} = {min_dist:,.2f} + {guess:,.2f}")
-        amount = starting_amount
-        for y in range(years):
-            amount -= dist
-            amount *= (1 + return_rate)
+        amount = igwad(starting_amount, years, dist, return_rate)
 
         # p(f"${amount:,.2f}\n")
         # p(f"{amount:.2f}")
@@ -32,6 +39,19 @@ def find_optimal_distribution(starting_amount, return_rate, years, iters=5000, e
         prior_ending = amount
     # U+03B5 is epsilon
     raise RecursionError(f"Didn't finish for {return_rate=}, {years=}, {iters=} \u03B5={epsilon}")
+
+
+def find_optimal_distribution_secant(starting_amount, return_rate, years, iters=50, epsilon=0.01):
+    min_dist = 0 if return_rate == 0 else starting_amount / (1 / return_rate + 1)
+    
+    def my_igwad(x):  # attempt to optimize this function to 0
+        return igwad(starting_amount, years, min_dist + x, return_rate)
+    
+    initial_guess = starting_amount / years
+    prior_ending = igwad(starting_amount, years, min_dist + initial_guess, return_rate)
+    second_guess = initial_guess + (prior_ending / years)
+    optimal_guess = scipy.optimize.newton(my_igwad, x0=initial_guess, x1=second_guess, tol=epsilon, maxiter=iters)
+    return min_dist + optimal_guess
 
 #
 # def find_divergent_return_rate(gamma):
@@ -71,3 +91,10 @@ def find_optimal_distribution(starting_amount, return_rate, years, iters=5000, e
 #
 # plt.plot(div_years, kappas)
 # plt.show()
+
+# sa = 100000000
+# rr = 0.01
+# ys = 40
+# result = find_optimal_distribution_secant(sa, rr, ys)
+# print(result)
+# print(abs(igwad(sa, ys, result, rr)))
