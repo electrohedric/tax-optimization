@@ -6,6 +6,7 @@ from typing import Tuple, Iterable
 import numpy as np
 
 import loader
+from loader import load_tax_bracket
 from tax_brackets import TaxBracket
 
 
@@ -314,7 +315,8 @@ class Account:
 
 class IncomeResult:
     def __init__(self, salary_amount: float, below_the_line: float, trad_cont_amount: float,
-                 trad_dist_alloc_amount: float, roth_dist_amount: float, tax_bracket: TaxBracket):
+                 trad_dist_alloc_amount: float, roth_dist_amount: float, tax_bracket: TaxBracket,
+                 social_security_benefit: float = 0, taxable_social_security_income: float = 0):
         """
         Does all calculations and stores all results from taxing total income
 
@@ -325,17 +327,18 @@ class IncomeResult:
             Either this or trad_cont_amount should be 0
         :param roth_dist_amount: final distribution (allocation) amount from all roth accounts
         :param tax_bracket: tax bracket computer to perform tax calculations
+        :param social_security_benefit: this years anual social security benefit
         """
-
         self.deductions = trad_cont_amount + below_the_line
         """sum of above the line + below the line deductions"""
 
         self.salary = salary_amount
         """salary before deductions"""
 
-        self.gross_income = salary_amount + trad_dist_alloc_amount
+        self.gross_income = salary_amount + trad_dist_alloc_amount + taxable_social_security_income
         """taxable income before deductions. salary + traditional distributions"""
 
+        # TODO: fix agi and deduction calculations
         self.agi = self.gross_income - trad_cont_amount
         """adjusted gross income. salary + traditional distrubtions"""
 
@@ -348,7 +351,7 @@ class IncomeResult:
         self.net_income = self.gross_income - self.income_tax.tax_paid
         """income after taxes. gross income - tax paid on income"""
 
-        self.total_income = self.net_income + roth_dist_amount
+        self.total_income = self.net_income + roth_dist_amount + social_security_benefit
         """money that shows up in your bank account. net income + roth distributions"""
 
 
@@ -399,18 +402,17 @@ class InvestmentYearResult:
 
 
 
-
 class Profile:
     def __init__(self):
-        self.age = 20
-        self.retire = 60
-        self.die = 100
-        self.income = 30000
-        self.salary_raise_rate = 1
+        self.age = 21
+        self.retire = 61
+        self.die = 85
+        self.income = 24000
+        self.salary_raise_rate =  0
         self.investment_return_rate = 7
         self.trad_alloc_percent = 4
         self.roth_alloc_percent = 4
-        self.percent_salary_expenses = 100
+        self.percent_salary_expenses = 80
         self.tax_bracket = loader.load_tax_bracket("data/2021/single_tax.csv")
 
     def kw(self):
@@ -477,11 +479,69 @@ class Profile:
         keywords.update(kw)
         return log_invest(**keywords)
 
+def sum_largest_values_in_array(list1: np.array,n: int):
+
+    final_list = np.array([])
+    list1 = list1.astype(int)
+    max1_index = 0
+    for i in range(0, n):
+        max1 = 0
+        for j in range(len(list1)):
+            max1 = np.max(list1)
+            max1_index = np.argmax(list1)
+        list1 = np.delete(list1, max1_index)
+        final_list = np.append(final_list, max1)
+    sum = final_list.sum()
+    return sum
+
+
+
+def sum_largest_values_in_array2(list1: np.array,n):
+
+    if n < 1:
+        n = 0
+    for i in range(0, n):
+        list1 = list1.shitf()
+    # print(f"final list is {final_list}")
+    # print("test3")
+    sum = float(list1.sum())
+    return sum
+
+def get_PIA(all_salaries: np.ndarray):
+    amount = sum_largest_values_in_array(all_salaries, 35)
+    # print(f"salaries are ${amount:,.2f}")
+    average_index_monthly_earnings = amount / 420
+    # print(f"AIME is ${average_index_monthly_earnings:,.2f}")
+    single_tax_bracket_2021_AIME = load_tax_bracket("data/2021/AIME_benefit_calculation.csv")
+    PIA = single_tax_bracket_2021_AIME.tax(average_index_monthly_earnings, 0)
+    # PIA = primary insurance amount
+    # print(f"PIA is ${PIA.tax_paid:,.2f}")
+    return PIA.tax_paid
+
+def find_actual_social_secruity_benefit(PIA, year) -> float:
+
+    social_security_benefit = 0.0
+
+    if year > 70 or year < 62:
+        print("invalid year to take social security")
+
+
+    if year >= 67 and year <= 70:
+        social_security_benefit = (PIA*12)* (1 + ((year-67) * 0.08))
+        # print(f"social secruity_benefit is ${social_security_benefit/12:,.2f} at age {year}")
+    if year >= 64 and year <= 66 :
+        social_security_benefit = (PIA*12)* (1 + ((year-67) * 0.0666))
+        # print(f"social secruity_benefit is ${social_security_benefit/12:,.2f} at age {year}")
+    if year >= 62 and year <= 63:
+        social_security_benefit = (PIA*12)* (1 + ((year-64) * 0.05) - 0.1998)
+        # print(f"social secruity_benefit is ${social_security_benefit/12:,.2f} at age {year}")
+    return social_security_benefit
+
 
 def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40,
                  death: int = 60, retirement_expenses_percent: float = 70, below_the_line: float = 12550,
                  salary_raise_rate: float = 1, investment_return_rate: float = 7, total_alloc_percent: float = 10,
-                 trad_start: float = 0, roth_start: float = 0) -> InvestmentResult:
+                 trad_start: float = 0, roth_start: float = 0, ss_year: int = 70) -> InvestmentResult:
     """
 
     :param percentages: % of total allocation traditional contributions
@@ -496,8 +556,11 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
     :param total_alloc_percent:
     :param trad_start:
     :param roth_start:
+    :param ss_year:
     :return:
     """
+
+    all_salaries = np.zeros([retirement])
     trad_account = Account(trad_start, AccountType.TRAD)
     roth_account = Account(roth_start, AccountType.ROTH)
     salary = Account(starting_salary)  # keep track of current salary
@@ -515,6 +578,12 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
         roth_alloc = salary.amount * roth_alloc_percent / 100
         expenses = salary.amount * expenses_percent / 100
 
+        # add all salaries to an array for social security calculation
+        all_salaries[y] = int(salary.amount)
+
+        # total_salary += salary.amount
+        # print(f"total salary is {total_salary}")
+
         # compute contributions to roth and traditional accounts
         trad_cont = trad_account.create_contribution(trad_alloc)
         roth_cont = roth_account.create_roth_contribution(roth_alloc, tax_bracket, expenses)
@@ -530,6 +599,17 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
         salary_growth.grow()
 
     # retirement
+    # TODO make sure that salary includes Traditional Distributions, make this faster
+    # Social Security Calculations
+    PIA = get_PIA(all_salaries)
+    # print(f"PIA is ${PIA:,.2f}")
+    ss_benefit = find_actual_social_secruity_benefit(PIA, ss_year)
+    # for x in range(61,71):
+    #     print(f" ss benefit is ${find_actual_social_secruity_benefit(PIA, x):,.2f} durring year {x}")
+    #
+
+
+
 
     retirement_expenses = salary.amount * retirement_expenses_percent / 100
 
@@ -545,8 +625,16 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
         roth_dist = roth_account.create_distribution(needed_roth_dist_amount)
         roth_dist_alloc = roth_dist.amount
 
+        # determin social security benefit
+        if retirement <= ss_year:
+            social_security_benefit = 0
+        else:
+            social_security_benefit = ss_benefit
+
+
         # compute income
-        income_result = IncomeResult(0, below_the_line, 0, trad_dist_alloc, roth_dist_alloc, tax_bracket)
+        income_result = IncomeResult(0, below_the_line, 0, trad_dist_alloc, roth_dist_alloc, tax_bracket,
+                                     social_security_benefit)
 
         # run investment year
         year_result = InvestmentYearResult(y, [], [trad_dist, roth_dist], [trad_growth, roth_growth], income_result)

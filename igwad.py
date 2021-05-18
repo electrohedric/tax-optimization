@@ -92,9 +92,9 @@ def find_optimal_distribution_secant(starting_amount, return_rate, years, iters=
 # plt.plot(div_years, kappas)
 # plt.show()
 
-# sa = 100000000
-# rr = 0.01
-# ys = 40
-# result = find_optimal_distribution_secant(sa, rr, ys)
-# print(result)
-# print(abs(igwad(sa, ys, result, rr)))
+sa = 1000000
+rr = 0.01
+ys = 300
+result = find_optimal_distribution_secant(sa, rr, ys)
+print(result)
+print(abs(igwad(sa, ys, result, rr)))

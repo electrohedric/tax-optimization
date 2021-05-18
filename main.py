@@ -1,6 +1,7 @@
 import ctypes
 import sys
 import time
+import image
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -593,7 +594,7 @@ def optimize_sorted_random_1():
     best_net = 0
     best_strategy = None
 
-    for i in range(1000):
+    for i in range(10000):
         random = np.random.normal(0.5, 2, all_trad_year).clip(0, 1)
         random.sort()
         # strategy = np.append(np.interp(np.arange(0, all_trad_year), np.arange(0, num_rand) * ((all_trad_year + 1) / num_rand), random), np.ones(retirement - all_trad_year))
@@ -622,7 +623,7 @@ def optimize_sorted_random_2():
     best_net = 0
     best_strategy = None
 
-    for i in range(10000):
+    for i in range(1000):
         random = np.random.normal(0.5, 2, all_trad_year).clip(0, 1)
         random.sort()
         # strategy = np.append(np.interp(np.arange(0, all_trad_year), np.arange(0, num_rand) * ((all_trad_year + 1) / num_rand), random), np.ones(retirement - all_trad_year))
@@ -658,9 +659,9 @@ if __name__ == '__main__':
     # test_piecewise_switchyear_vs_age_vs_endbalance()
     # test_piecewise2_switchyear1_vs_duration_vs_endbalance()
     # test_erf_switchyear_vs_slope_vs_endbalance()
-    # optimize_sorted_random_1()
+    optimize_sorted_random_1()
     # optimize_sorted_random_2()
     # test_investment()
     # test_tax_bracket()
     # test_tax_bracket_va()
-    test_tax_bracket_total()
+    # test_tax_bracket_total()
