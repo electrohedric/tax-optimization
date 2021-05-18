@@ -110,7 +110,8 @@ class TaxBracket:
         # ensure boundaries have no gaps
         for i in range(len(self.tax_ranges) - 1):
             assert self.tax_ranges[i].upper_bound == self.tax_ranges[i + 1].lower_bound, "Gap between lower and upper bounds"
-        
+
+        # precompute fixed tax amounts within the ranges
         range_tax_amounts = [0.] + [(x.upper_bound - x.lower_bound) * x.percent for x in self.tax_ranges[:-1]]
         self.cum_range_tax_amounts = np.cumsum(range_tax_amounts)
 
@@ -130,7 +131,13 @@ class TaxBracket:
         tax.full_amount = full_amount
         tax.taxable_amount = full_amount - deduction
         tax.margin = margin
-        if tax.taxable_amount <= 0:  # can't tax a non-positive amount
+        if tax.taxable_amount + margin <= 0 or margin < 0:  # can't tax a non-positive amount
+            return tax  # (0)
+        if margin > 0:
+            upper = self.tax(full_amount + margin, deduction)
+            lower = self.tax(margin, deduction)
+            tax.tax_paid = upper.tax_paid - lower.tax_paid
+            # TODO: if you feel like it add a breakdown
             return tax
         for tr in self.tax_ranges:
             if tr.amount_in_range(tax.taxable_amount + margin) == 0.0:
@@ -153,9 +160,11 @@ class TaxBracket:
             thus: tax(a, margin=m) == tax(a+m) - tax(a)
         :return: amount taxed as a float
         """
-        if margin > 0:
-            return self.fast_tax(margin, deduction) - self.fast_tax(full_amount, deduction)
         taxable_amount = full_amount - deduction
+        if taxable_amount + margin <= 0 or margin < 0:
+            return 0
+        if margin > 0:
+            return self.fast_tax(margin + full_amount, deduction) - self.fast_tax(margin, deduction)
         # find first tax range where the upper bound is less than the taxable amount
         partial_index = bisect.bisect_left(self.tax_ranges, taxable_amount)
         partial_tr = self.tax_ranges[partial_index]

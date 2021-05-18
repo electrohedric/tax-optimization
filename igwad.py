@@ -42,6 +42,8 @@ def find_optimal_distribution(starting_amount, return_rate, years, iters=5000, e
 
 
 def find_optimal_distribution_secant(starting_amount, return_rate, years, iters=50, epsilon=0.01):
+    if starting_amount == 0:
+        return 0
     min_dist = 0 if return_rate == 0 else starting_amount / (1 / return_rate + 1)
     
     def my_igwad(x):  # attempt to optimize this function to 0

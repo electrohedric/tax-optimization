@@ -21,6 +21,9 @@ class Test(TestCase):
             self.assertAlmostEqual(ds.tax_paid, dsalt.tax_paid)
             self.assertAlmostEqual(amount - d0.tax_paid, d0.remaining())
             self.assertAlmostEqual(amount - ds.tax_paid, ds.remaining())
+            # test fast
+            self.assertAlmostEqual(d0.tax_paid, single_tax_bracket_2021.fast_tax(amount, 0), msg="Fast tax fail on 0 deduction")
+            self.assertAlmostEqual(ds.tax_paid, single_tax_bracket_2021.fast_tax(amount, standard_deduction_2021), msg="Fast tax fail on standard deduction")
 
         test(0, 0)
         test(5000, 500.00)
@@ -37,14 +40,17 @@ class Test(TestCase):
             tax_lower = single_tax_bracket_2021.tax(margin, 0).tax_paid
             tax_margin = single_tax_bracket_2021.tax(amount, 0, margin=margin).tax_paid
             self.assertAlmostEqual(max(tax_upper - tax_lower, 0), tax_margin, msg=f"{tax_upper} - {tax_lower} = {tax_upper - tax_lower}")
+            self.assertAlmostEqual(tax_margin, single_tax_bracket_2021.fast_tax(amount, 0, margin=margin), msg="Fast tax fail on margin")
+
+            # with standard deduction
+            tax_upper2 = single_tax_bracket_2021.tax(amount + margin, standard_deduction_2021).tax_paid
+            tax_lower2 = single_tax_bracket_2021.tax(margin, standard_deduction_2021).tax_paid
+            tax_margin2 = single_tax_bracket_2021.tax(amount, standard_deduction_2021, margin=margin).tax_paid
+            self.assertAlmostEqual(max(tax_upper2 - tax_lower2, 0), tax_margin2,
+                                   msg=f"{tax_upper2} - {tax_lower2} = {tax_upper2 - tax_lower2}")
 
         mtest(0, 0)
-        mtest(-100, 4000)
         mtest(1000, -4000)
-        mtest(-100, -1000)
-        mtest(-100000, 100000)
-        mtest(-100000, 10000)
-        mtest(-100000, 1000000)
         mtest(100, 1000)
         mtest(20000, 1000)
         mtest(1000000, 40000)
@@ -56,8 +62,8 @@ class Test(TestCase):
 
         def rtest(amount, margin):
             # test that the reverse tax works with deductions and margins
-            r1 = single_tax_bracket_2021.reverse_tax(amount, 0, margin)
-            r2 = single_tax_bracket_2021.reverse_tax(amount, standard_deduction_2021, margin)
+            r1 = single_tax_bracket_2021.reverse_tax(amount, 0, margin, epsilon=1e-10, iters=100)
+            r2 = single_tax_bracket_2021.reverse_tax(amount, standard_deduction_2021, margin, epsilon=1e-10, iters=100)
             self.assertAlmostEqual(amount, single_tax_bracket_2021.tax(r1, 0, margin).remaining(),
                                    msg=f"Taxed {r1} at {margin=}")
             self.assertAlmostEqual(amount, single_tax_bracket_2021.tax(r2, standard_deduction_2021, margin).remaining(),
