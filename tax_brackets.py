@@ -1,6 +1,9 @@
+import bisect
 import functools
 import logging
 from typing import List
+
+import numpy as np
 
 
 class TaxRange:
@@ -40,7 +43,10 @@ class TaxRange:
         :return: amount taxed
         """
         return self.amount_in_range(taxable_amount) * self.percent
-
+    
+    def __lt__(self, other):
+        return self.upper_bound < other
+    
     def __str__(self):
         return f"${self.lower_bound:.2f} -> ${self.upper_bound:.2f} @ {self.percent:.2%}"
 
@@ -104,6 +110,9 @@ class TaxBracket:
         # ensure boundaries have no gaps
         for i in range(len(self.tax_ranges) - 1):
             assert self.tax_ranges[i].upper_bound == self.tax_ranges[i + 1].lower_bound, "Gap between lower and upper bounds"
+        
+        range_tax_amounts = [0.] + [(x.upper_bound - x.lower_bound) * x.percent for x in self.tax_ranges[:-1]]
+        self.cum_range_tax_amounts = np.cumsum(range_tax_amounts)
 
     def tax(self, full_amount: float, deduction: float, margin: float = 0) -> TaxResult:
         """
@@ -130,7 +139,32 @@ class TaxBracket:
             tax.breakdown.append(amount)
             tax.tax_paid += amount
         return tax
+    
+    def fast_tax(self, full_amount: float, deduction: float, margin: float = 0) -> float:
+        """
+        Faster method which computes the amount of tax deducted from the amount in a step pattern.
+        The amount of money within all preceding ranges is precomputed to save time. Also, no
+        TaxResult object initialization takes place. Note that this method does not have a breakdown
+        available for this reason.
 
+        :param full_amount: amount to tax (like income) without any deductions
+        :param deduction: amount to subtract from 'full_amount' where 'full_amount' - this == taxable amount
+        :param margin: amount to move the taxable amount up the bracket by. everything under the margin is taxed at 0%.
+            thus: tax(a, margin=m) == tax(a+m) - tax(a)
+        :return: amount taxed as a float
+        """
+        if margin > 0:
+            return self.fast_tax(margin, deduction) - self.fast_tax(full_amount, deduction)
+        taxable_amount = full_amount - deduction
+        # find first tax range where the upper bound is less than the taxable amount
+        partial_index = bisect.bisect_left(self.tax_ranges, taxable_amount)
+        partial_tr = self.tax_ranges[partial_index]
+        # compute amount in that range, given that lower_bound < taxable_amount <= upper_bound
+        partial_amount = (taxable_amount - partial_tr.lower_bound) * partial_tr.percent
+        # add the sum of all previous tax ranges (pre-computed) to the result
+        return self.cum_range_tax_amounts[partial_index] + partial_amount
+        
+    
     @functools.cache
     def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-2, iters=20):
         """
