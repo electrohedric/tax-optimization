@@ -33,7 +33,7 @@ def test_tax_bracket():
             deduction = float(input("Enter deduction or nothing: $") or '0')
         except ValueError:
             print("Quit")
-            sys.exit()
+            sys.e+xit()
         tax = single_tax_bracket_2021.tax(amount, max(deduction, standard_deduction_2021))
         print(f"${tax.tax_paid:.2f} of ${tax.real_taxable_amount():.2f} taxed")
         for i in range(len(tax.breakdown)):
