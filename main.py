@@ -33,7 +33,7 @@ def test_tax_bracket():
             deduction = float(input("Enter deduction or nothing: $") or '0')
         except ValueError:
             print("Quit")
-            sys.e+xit()
+            sys.exit()
         tax = single_tax_bracket_2021.tax(amount, max(deduction, standard_deduction_2021))
         print(f"${tax.tax_paid:.2f} of ${tax.real_taxable_amount():.2f} taxed")
         for i in range(len(tax.breakdown)):
@@ -172,7 +172,7 @@ def test_investment():
     plt.show()
 
 
-def graph_3d(x: np.ndarray, y: np.ndarray, z: np.ndarray, colormap="cool warm", z_label="Plot", x_label="x",
+def graph_3d(x: np.ndarray, y: np.ndarray, z: np.ndarray, colormap="coolwarm", z_label="Plot", x_label="x",
              y_label="y"):
     ax = plt.subplot(111, projection='3d')
     x = x.reshape((len(x), 1))  # needs to be 2-dim
@@ -622,7 +622,7 @@ def optimize_sorted_random_1():
     all_trad_year = best_switch_year + 2
     best_net = 0
     best_strategy = None
-    iterations = 10000
+    iterations = 12345
     iterations_percent = iterations/100
 
     for i in range(iterations):
@@ -635,9 +635,8 @@ def optimize_sorted_random_1():
         net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         final_net = net[-1]
-        if i % (100) == 0:
-            print(i / range(iterations) * 100, " percent complete \r")
-            # print(f"{i / iterations_percent}% done at {i} iterations")
+        if i % 100 == 0:
+            print(f"{i / iterations_percent:,.0f}% done at {i} iterations")
         if final_net > best_net:
             best_net = final_net
             best_strategy = strategy
@@ -684,7 +683,7 @@ def optimize_sorted_random_2():
 if __name__ == '__main__':
     # COMMON FUNCTIONS
 
-    # test_simple_ratio_vs_age_vs_endbalance()
+    # test_simple_ratio_vs_age_vs_end_balance()
     optimize_sorted_random_1()
     # optimize_sorted_random_2()
     # test_piecewise_switchyear_vs_age_vs_endbalance()
