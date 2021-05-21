@@ -109,7 +109,8 @@ class TaxBracket:
         assert self.tax_ranges[-1].upper_bound == float('inf'), "Upper bound not infinity"
         # ensure boundaries have no gaps
         for i in range(len(self.tax_ranges) - 1):
-            assert self.tax_ranges[i].upper_bound == self.tax_ranges[i + 1].lower_bound, "Gap between lower and upper bounds"
+            assert self.tax_ranges[i].upper_bound == self.tax_ranges[i + 1].lower_bound, \
+                "Gap between lower and upper bounds"
 
         # precompute fixed tax amounts within the ranges
         range_tax_amounts = [0.] + [(x.upper_bound - x.lower_bound) * x.percent for x in self.tax_ranges[:-1]]
@@ -172,8 +173,7 @@ class TaxBracket:
         partial_amount = (taxable_amount - partial_tr.lower_bound) * partial_tr.percent
         # add the sum of all previous tax ranges (pre-computed) to the result
         return self.cum_range_tax_amounts[partial_index] + partial_amount
-        
-    
+
     @functools.cache
     def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-2, iters=20):
         """
@@ -198,7 +198,8 @@ class TaxBracket:
             if abs(off) < epsilon:
                 return guess
         # U+03B5 is epsilon
-        logging.warning(f"Could not find solution to tax(?, {deduction=}, {margin=}) == {final_amount} with \u03B5={epsilon} after {iters} iters")
+        logging.warning(f"Could not find solution to tax(?, {deduction=}, {margin=}) == {final_amount} "
+                        f"with \u03B5={epsilon} after {iters} iters")
         return guess
 
     def __str__(self):
@@ -227,7 +228,8 @@ class Tax:
             if abs(off) < epsilon:
                 return guess
         # U+03B5 is epsilon
-        logging.warning(f"Could not find solution to tax(?) == {final_amount} with \u03B5={epsilon} after {iters} iters")
+        logging.warning(f"Could not find solution to tax(?) == {final_amount} with \u03B5={epsilon} after {iters} "
+                        f"iterations")
         return guess
 
 
