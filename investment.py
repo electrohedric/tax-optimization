@@ -4,6 +4,7 @@ from enum import IntEnum
 from typing import Tuple, Iterable
 
 import numpy as np
+
 import igwad
 import loader
 from loader import load_tax_bracket
@@ -99,7 +100,7 @@ class InvestmentResult:
         """
         :return: array of the tax paid on total income from each year
         """
-        return np.array([x.income.income_tax.tax_paid for x in self])
+        return np.array([x.income.income_tax for x in self])
 
     def get_total_trad_assets_post_tax(self, tax_bracket: TaxBracket) -> np.ndarray:
         """

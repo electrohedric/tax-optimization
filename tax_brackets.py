@@ -116,6 +116,21 @@ class TaxBracket:
         range_tax_amounts = [0.] + [(x.upper_bound - x.lower_bound) * x.percent for x in self.tax_ranges[:-1]]
         self.cum_range_tax_amounts = np.cumsum(range_tax_amounts)
 
+        self.reverse_prediction_polys = []
+        for r in self.tax_ranges:
+            upper = r.upper_bound
+            if upper == float('inf'):
+                upper = 1.2 * r.lower_bound + 100  # don't go to infinity.
+                
+            # compute linear regression of 10 points for each range
+            dispersion = np.linspace(r.lower_bound, upper, 10)
+            answers = np.zeros(10)
+            for i, ea_case in enumerate(dispersion):
+                answers[i] = self.reverse_tax(ea_case, 0, epsilon=1e-5, iters=50)
+            poly = np.poly1d(np.polyfit(dispersion, answers, 1))
+            
+            self.reverse_prediction_polys.append(poly)
+
     def tax(self, full_amount: float, deduction: float, margin: float = 0) -> TaxResult:
         """
         Computes the amount of tax deducted from the amount in a step pattern.
@@ -140,10 +155,11 @@ class TaxBracket:
             tax.tax_paid = upper.tax_paid - lower.tax_paid
             # TODO: if you feel like it add a breakdown
             return tax
+        # margin == 0
         for tr in self.tax_ranges:
-            if tr.amount_in_range(tax.taxable_amount + margin) == 0.0:
+            if tr.amount_in_range(tax.taxable_amount) == 0.0:
                 break  # no more can possibly be taxed since there's no money in the range and ranges always increase
-            amount = tr.tax(tax.taxable_amount + margin) - tr.tax(margin)
+            amount = tr.tax(tax.taxable_amount)
             tax.breakdown.append(amount)
             tax.tax_paid += amount
         return tax
@@ -167,18 +183,21 @@ class TaxBracket:
         if margin > 0:
             return self.fast_tax(margin + full_amount, deduction) - self.fast_tax(margin, deduction)
         # find first tax range where the upper bound is less than the taxable amount
+        i = 0
+        while self.tax_ranges[i] < taxable_amount:  # keep increasing upper bound until: final amount < next upper bound
+            i += 1
         partial_index = bisect.bisect_left(self.tax_ranges, taxable_amount)
         partial_tr = self.tax_ranges[partial_index]
         # compute amount in that range, given that lower_bound < taxable_amount <= upper_bound
         partial_amount = (taxable_amount - partial_tr.lower_bound) * partial_tr.percent
         # add the sum of all previous tax ranges (pre-computed) to the result
         return self.cum_range_tax_amounts[partial_index] + partial_amount
-
-    @functools.cache
-    def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-2, iters=20):
+    
+    # @functools.cache
+    def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-2, iters=20, guess=None):
         """
         Computes the reverse of a tax using a newton-like recursive method.
-        i.e. the amount of money that needs to be taxed to result in 'final_amount' leftover.
+        i.e. the amount of money that, when taxed, results in 'final_amount' left over.
         In other words: tax(?) == 'final_amount'
         
         :param final_amount: amount required to be left over after tax is taken out
@@ -188,11 +207,12 @@ class TaxBracket:
         :param epsilon: fine-grainness of the result.
         :param iters: maximum number of iterations before returning the final answer.
             Most reasonable epsilons result in around 12 iters on average
-        :return:
+        :param guess: initial guess to use. by default is == final_amount. if you have a better one, put that here
+        :return: the amount of money that, when taxed, results in 'final_amount' left over
         """
-        guess = final_amount
+        guess = guess or final_amount
         for i in range(iters):
-            leftover = self.tax(guess, deduction, margin).remaining()
+            leftover = guess - self.fast_tax(guess, deduction, margin)
             off = final_amount - leftover
             guess += off
             if abs(off) < epsilon:
@@ -201,7 +221,16 @@ class TaxBracket:
         logging.warning(f"Could not find solution to tax(?, {deduction=}, {margin=}) == {final_amount} "
                         f"with \u03B5={epsilon} after {iters} iters")
         return guess
-
+    
+    def fast_reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-2, iters=20):
+        i = 0
+        while self.tax_ranges[i] < final_amount:  # keep increasing upper bound until: final amount < next upper bound
+            i += 1
+        poly = self.reverse_prediction_polys[i]
+        # the idea is that this guess is 99% more accurate than final_amount
+        guess = max(poly(final_amount + margin - deduction), 0)  # poly is based on 0 deduction, no margin. compensate
+        return self.reverse_tax(final_amount, deduction, margin, epsilon, iters, guess)
+    
     def __str__(self):
         return self.__class__.__name__ + "\n" + "\n".join([str(x) for x in self.tax_ranges])
 
