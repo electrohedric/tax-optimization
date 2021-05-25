@@ -8,6 +8,7 @@ import numpy as np
 from matplotlib import cm
 # from multiprocessing import Pool, Value, Lock
 from multiprocessing import Pool
+# import multiprocessing
 
 import investment
 from investment import Profile
@@ -135,7 +136,7 @@ def plot_investment(ir: investment.InvestmentResult, age: int, retire: int, ax0,
             continue
         print(f"AGE = {year.year + age}, "
               f"Net worth = ${year.net_worth():,.2f}, "
-              f"Taxes paid = ${year.income.income_tax.tax_paid:,.2f}, "
+              f"Taxes paid = ${year.income.income_tax:,.2f}, "
               f"Total income = ${year.income.total_income:,.2f}")
         if year.year == retire - age - 1:
             print("=== retirement ===")
@@ -149,9 +150,13 @@ def plot_investment(ir: investment.InvestmentResult, age: int, retire: int, ax0,
 def test_investment():
     profile = Profile()
     split = 10
+    print("All Roth")
     ir_roth = profile.run_simple_invest(trad_alloc_percent=0, roth_alloc_percent=split)
+    print("All Trad")
     ir_trad = profile.run_simple_invest(trad_alloc_percent=split, roth_alloc_percent=0)
+    print("50/50")
     ir_5050 = profile.run_simple_invest(trad_alloc_percent=split / 2, roth_alloc_percent=split / 2)
+    print("swep")
     ir_sweep = profile.run_linsweep2_invest(total_alloc_percent=split, slope_decision=1)
     # ir_60 = profile.run_simple_invest(trad_alloc_percent=split * 0.60, roth_alloc_percent=split * 0.40)
     # ir_80 = profile.run_simple_invest(trad_alloc_percent=split * 0.80, roth_alloc_percent=split * 0.20)
@@ -193,7 +198,7 @@ def get_min_max(n):
 def test_simple_ratio_vs_age_vs_end_balance():
     profile = Profile()
     split = 10
-    grain: int = 100  # number of points to graph in each dimension
+    grain: int = 500  # number of points to graph in each dimension
     ir = None
     years = profile.die - profile.age
 
@@ -231,6 +236,7 @@ def test_simple_ratio_vs_age_vs_end_balance():
 def test_piecewise_switchyear_vs_age_vs_endbalance(savings_rate: int = 10):
     profile = Profile()
     total = savings_rate
+    print(f"total is {total}")
     years = profile.die - profile.age
     retire = profile.retire - profile.age
 
@@ -238,6 +244,7 @@ def test_piecewise_switchyear_vs_age_vs_endbalance(savings_rate: int = 10):
     z = np.zeros((retire, years))  # dims are years x grain
     for i in x:
         ir = profile.run_piecewise_invest(total_alloc_percent=total, switch_year=i)
+        # print(i)
         net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() + \
             ir.get_total_incomes().cumsum()
         z[i, ] = net
@@ -259,7 +266,7 @@ def test_piecewise_switchyear_vs_age_vs_endbalance(savings_rate: int = 10):
     return sy_max
 
 
-def test_piecewise2_switchyear1_vs_duration_vs_endbalance():
+def test_piecewise2_switchyear_vs_duration_vs_endbalance():
     profile = Profile()
     total = 10
     # years = profile.die - profile.age
@@ -538,7 +545,7 @@ def test_exp_slopedecision_vs_age_vs_endbalance():
 
 def test_log_slopedecision_vs_age_vs_endbalance():
     profile = Profile()
-    total = 10
+    total = 10.0
     ir = None
     years = profile.die - profile.age
     retire = profile.retire - profile.age
@@ -619,10 +626,11 @@ def optimize_sorted_random_1():
     best_switch_year = test_piecewise_switchyear_vs_age_vs_endbalance(10)
     profile = Profile()
     retirement = profile.retire - profile.age
-    all_trad_year = best_switch_year + 2
+    all_trad_year = best_switch_year + 4
+    # all_trad_year = 15
     best_net = 0
     best_strategy = None
-    iterations = 12345
+    iterations = 10000
     iterations_percent = iterations/100
 
     for i in range(iterations):
@@ -636,6 +644,7 @@ def optimize_sorted_random_1():
             + ir.get_total_incomes().cumsum()
         final_net = net[-1]
         if i % 100 == 0:
+            # print(i / range(iterations) * 100, " percent complete \r")
             print(f"{i / iterations_percent:,.0f}% done at {i} iterations")
         if final_net > best_net:
             best_net = final_net
@@ -650,25 +659,26 @@ def optimize_sorted_random_1():
 
 
 def optimize_sorted_random_2():
+    best_switch_year = test_piecewise_switchyear_vs_age_vs_endbalance(10)
     profile = Profile()
     retirement = profile.retire - profile.age
-    all_trad_year = 40
+    all_trad_year = retirement
     best_net = 0
     best_strategy = None
+    iterations = 10000
+    iterations_percent = iterations/100
 
-    for i in range(1000):
+    for i in range(iterations):
         random = np.random.normal(0.5, 2, all_trad_year).clip(0, 1)
         random.sort()
-        # strategy = np.append(np.interp(np.arange(0, all_trad_year), np.arange(0, num_rand) *
-        #                                ((all_trad_year + 1) / num_rand), random), np.ones(retirement - all_trad_year))
-        # strategy = np.append(random, np.ones(retirement - all_trad_year))
-        strategy = random
+        strategy = np.append(random, np.ones(retirement - all_trad_year))
         ir = profile.run(investment.array_invest, percentages=strategy)
-        net = ir.get_total_trad_assets_post_tax(
-            single_tax_bracket_2021) + ir.get_total_roth_assets() + ir.get_total_incomes().cumsum()
+        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+            + ir.get_total_incomes().cumsum()
         final_net = net[-1]
-        if i % 1000 == 0:
-            print(i)
+        if i % 100 == 0:
+            # print(i / range(iterations) * 100, " percent complete \r")
+            print(f"{i / iterations_percent:,.0f}% done at {i} iterations")
         if final_net > best_net:
             best_net = final_net
             best_strategy = strategy
@@ -677,6 +687,7 @@ def optimize_sorted_random_2():
     plt.plot(np.arange(0, retirement), best_strategy)
     print(best_strategy)
     print(f"${best_net:,.2f}")
+
     plt.show()
 
 
@@ -684,9 +695,9 @@ if __name__ == '__main__':
     # COMMON FUNCTIONS
 
     # test_simple_ratio_vs_age_vs_end_balance()
-    optimize_sorted_random_1()
+    # optimize_sorted_random_1()
     # optimize_sorted_random_2()
-    # test_piecewise_switchyear_vs_age_vs_endbalance()
+    test_piecewise_switchyear_vs_age_vs_endbalance()
     # test_investment()
 
     # UNCOMMON FUNCTIONS
@@ -699,7 +710,7 @@ if __name__ == '__main__':
     # test_exp_slopedecision_vs_age_vs_endbalance()
     # test_log_slopedecision_vs_age_vs_endbalance()
     # test_salary_vs_savingsrate_vs_optimalratio()
-    # test_piecewise2_switchyear1_vs_duration_vs_endbalance()
+    # test_piecewise2_switchyear_vs_duration_vs_endbalance()
     # test_erf_switchyear_vs_slope_vs_endbalance()
     # test_tax_bracket()
     # test_tax_bracket_va()
