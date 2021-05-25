@@ -68,10 +68,16 @@ class Test(TestCase):
             # test that the reverse tax works with deductions and margins
             r1 = single_tax_bracket_2021.reverse_tax(amount, 0, margin, epsilon=1e-10, iters=100)
             r2 = single_tax_bracket_2021.reverse_tax(amount, standard_deduction_2021, margin, epsilon=1e-10, iters=100)
-            self.assertAlmostEqual(amount, single_tax_bracket_2021.tax(r1, 0, margin).remaining(),
-                                   msg=f"Taxed {r1} at {margin=}")
-            self.assertAlmostEqual(amount, single_tax_bracket_2021.tax(r2, standard_deduction_2021, margin).remaining(),
-                                   msg=f"Taxed {r2} deduction={standard_deduction_2021} at {margin=}")
+            r3 = single_tax_bracket_2021.fast_reverse_tax(amount, 0, margin, epsilon=1e-10, iters=100)
+            r4 = single_tax_bracket_2021.fast_reverse_tax(amount, standard_deduction_2021, margin, epsilon=1e-10, iters=100)
+            r1_true = single_tax_bracket_2021.tax(r1, 0, margin).remaining()
+            r2_true = single_tax_bracket_2021.tax(r2, standard_deduction_2021, margin).remaining()
+            r3_true = single_tax_bracket_2021.tax(r3, 0, margin).remaining()
+            r4_true = single_tax_bracket_2021.tax(r4, standard_deduction_2021, margin).remaining()
+            self.assertAlmostEqual(amount, r1_true, msg=f"Taxed {r1} at {margin=}")
+            self.assertAlmostEqual(amount, r2_true, msg=f"Taxed {r2} deduction={standard_deduction_2021} at {margin=}")
+            self.assertAlmostEqual(amount, r3_true, msg=f"Taxed {r3} at {margin=}")
+            self.assertAlmostEqual(amount, r4_true, msg=f"Taxed {r4} deduction={standard_deduction_2021} at {margin=}")
 
         reverse_test(0, 0)
         reverse_test(5000, 0)
