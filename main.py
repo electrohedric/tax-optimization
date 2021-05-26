@@ -694,10 +694,10 @@ def optimize_sorted_random_2():
 if __name__ == '__main__':
     # COMMON FUNCTIONS
 
-    # test_simple_ratio_vs_age_vs_end_balance()
+    test_simple_ratio_vs_age_vs_end_balance()
     # optimize_sorted_random_1()
     # optimize_sorted_random_2()
-    test_piecewise_switchyear_vs_age_vs_endbalance()
+    # test_piecewise_switchyear_vs_age_vs_endbalance()
     # test_investment()
 
     # UNCOMMON FUNCTIONS

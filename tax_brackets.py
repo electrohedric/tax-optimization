@@ -1,6 +1,7 @@
 import bisect
 import functools
 import logging
+import time
 from typing import List
 
 import numpy as np
@@ -115,9 +116,11 @@ class TaxBracket:
         # precompute fixed tax amounts within the ranges
         range_tax_amounts = [0.] + [(x.upper_bound - x.lower_bound) * x.percent for x in self.tax_ranges[:-1]]
         self.cum_range_tax_amounts = np.cumsum(range_tax_amounts)
-        
+
         # fast reverse tax optimizer
         self.reverse_prediction_polys = []
+
+    def _optimize_fast_reverse(self):
         for r in self.tax_ranges:
             upper = r.upper_bound
             if upper == float('inf'):
@@ -131,6 +134,11 @@ class TaxBracket:
             poly = np.poly1d(np.polyfit(dispersion, answers, 1))
             
             self.reverse_prediction_polys.append(poly)
+
+    def get_reverse_prediction_polys(self):
+        if not self.reverse_prediction_polys:
+            self._optimize_fast_reverse()
+        return self.reverse_prediction_polys
 
     def tax(self, full_amount: float, deduction: float, margin: float = 0) -> TaxResult:
         """
@@ -192,7 +200,7 @@ class TaxBracket:
         # add the sum of all previous tax ranges (pre-computed) to the result
         return self.cum_range_tax_amounts[partial_index] + partial_amount
     
-    # @functools.cache
+    @functools.cache
     def reverse_tax(self, final_amount: float, deduction: float, margin: float = 0, epsilon: float = 1e-2, iters=20, guess=None):
         """
         Computes the reverse of a tax using a newton-like recursive method.
@@ -225,7 +233,7 @@ class TaxBracket:
         i = 0
         while self.tax_ranges[i] < final_amount:  # keep increasing upper bound until: final amount < next upper bound
             i += 1
-        poly = self.reverse_prediction_polys[i]
+        poly = self.get_reverse_prediction_polys()[i]
         # the idea is that this guess is 99% more accurate than final_amount
         guess = max(poly(final_amount + margin - deduction), 0)  # poly is based on 0 deduction, no margin. compensate
         return self.reverse_tax(final_amount, deduction, margin, epsilon, iters, guess)

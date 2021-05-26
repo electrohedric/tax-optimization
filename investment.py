@@ -99,13 +99,12 @@ class InvestmentResult:
         """
         :return: array of the tax paid on total income from each year
         """
-        return np.array([x.income.income_tax for x in self])
-        # return np.array([x.income.income_tax.tax_paid for x in self])
+        return np.array([x.income.income_tax.tax_paid for x in self])
 
     def get_total_trad_assets_post_tax(self, tax_bracket: TaxBracket) -> np.ndarray:
         """
         Computes total net worth after tax is taken out on traditional
-        
+
         :param tax_bracket: tax function to use to tax
         :return: array of the net worth after taxes are taken out from each year,
             assuming full amount is taken as distributions (no deductions are taken, rough calculation)
@@ -195,7 +194,7 @@ class Account:
     def has(self, amount: float):
         """
         Determines if the amount can be taken out of the account without going negative
-        
+
         :param amount: amount to test
         :return: True if at least amount is in the account, False otherwise
         """
@@ -206,7 +205,7 @@ class Account:
         Helper method to generate a basic tax-free contribution.
         Ensures the amount contributed is positive
         Also ensure the amount contributed is not over the maximum contribution for the account type
-        
+
         :param amount: contribution allocation amount
         :return: a contribution matching the amount
         """
@@ -221,7 +220,7 @@ class Account:
         Ensures a distribution will never take out more money than is in the account.
         Also ensures the amount distributed is positive\n
         Allocation is == distribution.amount
-        
+
         :param amount: amount to take in distributions
         :return: a distribution matching the amount, or possibly less if there was not enough money
         """
@@ -288,7 +287,7 @@ class Account:
         """
         Helper method to generate tax-free growth.
         Basically a wrapper around Account.Growth
-        
+
         :param return_rate: rate to grow the account. 1.0 is 100% growth. See GrowthResult for more details
         :return: a growth with the return rate
         """
@@ -457,12 +456,12 @@ class Profile:
         self.age = 25
         self.retire = 65
         self.die = 90
-        self.income = 70000
+        self.income = 100000
         self.salary_raise_rate = 1
         self.investment_return_rate = 7
         self.trad_alloc_percent = 5
         self.roth_alloc_percent = 5
-        self.percent_salary_expenses = 70
+        self.percent_salary_expenses = 100
         self.tax_bracket = loader.load_tax_bracket("data/2021/single_tax.csv")
 
     def kw(self):
@@ -570,7 +569,7 @@ def find_actual_social_security_benefit(pia, year) -> float:
 def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40,
                  death: int = 60, retirement_expenses_percent: float = 70, below_the_line: float = 12550,
                  salary_raise_rate: float = 1, investment_return_rate: float = 7,
-                 taxable_account_alloc_percent: float = 0, total_alloc_percent: int = 10, trad_start: float = 0,
+                 taxable_account_alloc_percent: float = 0, total_alloc_percent: float = 10, trad_start: float = 0,
                  roth_start: float = 0, taxable_account_start: float = 0, ss_year: int = 70) -> InvestmentResult:
     """
 
@@ -591,14 +590,9 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
     :param ss_year:
     :return:
     """
-    # print(percentages)
-    # print(f"staring salary is {starting_salary}")
-
     # taxable_account_start = 10000
-    # taxable_account = Account(taxable_account_start, AccountType.TAXABLE)
-    # investment_return_rate = 0
-    # taxable_growth = taxable_account.create_growth(investment_return_rate / 100)
-
+    taxable_account = Account(taxable_account_start, AccountType.TAXABLE)
+    taxable_growth = taxable_account.create_growth(investment_return_rate / 100)
     # print(f"taxable account amount is {taxable_growth.account.amount}")
     # print(f"taxable account start amount is {taxable_account_start}")
 
@@ -609,24 +603,18 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
     salary_growth = salary.create_growth(salary_raise_rate / 100)
     trad_growth = trad_account.create_growth(investment_return_rate / 100)
     roth_growth = roth_account.create_growth(investment_return_rate / 100)
-    # TODO why do i need this?
-    total_alloc_percent = 10
     expenses_percent = 100 - total_alloc_percent
     result = InvestmentResult()
     for y in range(retirement):
         trad_alloc_percent = percentages[y] * total_alloc_percent
         roth_alloc_percent = total_alloc_percent - trad_alloc_percent
-        # taxable_account_alloc_percent = 0
+        taxable_account_alloc_percent = 0
 
-        # print(f"trad alloc percent = {trad_alloc_percent}, roth_alloc_percent = {roth_alloc_percent}, total percent = {total_alloc_percent} ")
         # determine amount of salary to allocate
         trad_alloc = salary.amount * trad_alloc_percent / 100
         roth_alloc = salary.amount * roth_alloc_percent / 100
+        taxable_alloc = salary.amount * taxable_account_alloc_percent / 100
 
-        # print(f"trad alloc is {trad_alloc}, roth alloc is {roth_alloc}")
-        # taxable_alloc = salary.amount * taxable_account_alloc_percent / 100
-
-        # TODO something wrong with expenses, should be igwad
         expenses = salary.amount * expenses_percent / 100
         # add all salaries to an array for social security calculation
         all_salaries[y] = int(salary.amount)
@@ -637,8 +625,8 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
         # compute contributions to roth and traditional accounts
         trad_cont = trad_account.create_contribution(trad_alloc)
         roth_cont = roth_account.create_roth_contribution(roth_alloc, tax_bracket, below_the_line, expenses)
-        # taxable_account_cont = taxable_account.create_taxable_account_contribution(taxable_alloc, tax_bracket,
-        #                                                                            below_the_line, expenses)
+        taxable_account_cont = taxable_account.create_taxable_account_contribution(taxable_alloc, tax_bracket,
+                                                                                   below_the_line, expenses)
         # compute income
         income_result = IncomeResult(salary.amount, below_the_line, trad_cont.amount, 0, 0, tax_bracket)
 
@@ -657,10 +645,8 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
         # print(f"Salary in year {y} is {salary.amount}.")
 
         # run investment year
-        # year_result = InvestmentYearResult(y, [trad_cont, roth_cont, taxable_account_cont], [],
-        #                                    [trad_growth, roth_growth, taxable_growth], income_result)
-        year_result = InvestmentYearResult(y, [trad_cont, roth_cont], [],
-                                           [trad_growth, roth_growth], income_result)
+        year_result = InvestmentYearResult(y, [trad_cont, roth_cont, taxable_account_cont], [],
+                                           [trad_growth, roth_growth, taxable_growth], income_result)
         result.year_results.append(year_result)
 
         # get a raise. do this outside so it doesn't count it in the total amount
@@ -682,7 +668,7 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
     retirement_expenses = salary.amount * retirement_expenses_percent / 100
     trad_strat = igwad.find_optimal_distribution_secant(trad_account.amount, investment_return_rate / 100,
                                                         death - retirement)
-    # print(f"igwad strat is ${trad_strat:,.2f}, {trad_account.amount}, {investment_return_rate}, {death-retirement}")
+    # print(f"igwad strat is ${trad_strat:,.2f}")
     # trad_strat = retirement_expenses
 
     broke = False
@@ -716,10 +702,7 @@ def array_invest(percentages: np.ndarray, starting_salary: float, tax_bracket: T
 
         # social_security_benefit = 0
 
-        # TODO make sure age gets passed in
         # compute income
-        if retirement_expenses > trad_dist.amount + roth_dist_alloc + social_security_benefit:
-            print(f"Expenses are higher than benefits by ${abs(retirement_expenses - trad_dist.amount - roth_dist_alloc - social_security_benefit)} is year {y + 25}")
         income_result = IncomeResult(0, below_the_line, 0, trad_dist_alloc, roth_dist_alloc, tax_bracket,
                                      social_security_benefit=social_security_benefit,
                                      taxable_social_security_income=social_security_taxable_income)
@@ -774,7 +757,6 @@ def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: i
     :param taxable_account_start: starting amount in the taxable account
     :return: InvestmentResult containing breakdown of all years
     """
-    taxable_account_alloc_percent = 0
     total = trad_alloc_percent + roth_alloc_percent + taxable_account_alloc_percent
     strategy = np.full(retirement, trad_alloc_percent / total)
     return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
@@ -782,13 +764,12 @@ def simple_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: i
                         taxable_account_alloc_percent, total, trad_start, roth_start, taxable_account_start)
 
 
-def piecewise_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 90,
-                     retirement_expenses_percent: float = 100, below_the_line: float = 12550,
+def piecewise_invest(starting_salary: float, tax_bracket: TaxBracket, retirement: int = 40, death: int = 60,
+                     retirement_expenses_percent: float = 70, below_the_line: float = 12550,
                      salary_raise_rate: float = 1,
-                     investment_return_rate: float = 7, total_alloc_percent: float = 10, switch_year: int = 40,
+                     investment_return_rate: float = 7, total_alloc_percent: float = 8, switch_year: int = 20,
                      trad_start: float = 0, roth_start: float = 0, **_) -> InvestmentResult:
     strategy = np.append(np.zeros(switch_year), np.ones(retirement - switch_year))
-    # print(strategy)
     return array_invest(strategy, starting_salary, tax_bracket, retirement, death, retirement_expenses_percent,
                         below_the_line, salary_raise_rate, investment_return_rate, total_alloc_percent,
                         trad_start, roth_start)
