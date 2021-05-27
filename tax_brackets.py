@@ -242,23 +242,25 @@ class TaxBracket:
         return self.__class__.__name__ + "\n" + "\n".join([str(x) for x in self.tax_ranges])
 
 
-class Tax:
+class TotalTax:
     def __init__(self, tax_brackets: List[TaxBracket], standard_deductions: List[float]):
         assert len(tax_brackets) == len(standard_deductions), "Bracket length != SD length"
         self.tax_brackets = tax_brackets
         self.standard_deductions = standard_deductions
 
-    def tax(self, full_amount: float) -> float:
+    def tax(self, full_amount: float, above_the_line: float = 0, margin: float = 0) -> float:
+        if margin > 0:
+            return self.tax(margin + full_amount, above_the_line) - self.tax(margin, above_the_line)
         total_taxed = 0
         for tb, sd in zip(self.tax_brackets, self.standard_deductions):
-            total_taxed += tb.tax(full_amount, sd).tax_paid
+            total_taxed += tb.fast_tax(full_amount, sd + above_the_line)
         return total_taxed
 
     @functools.cache
-    def reverse_tax(self, final_amount: float, epsilon: float = 1e-2, iters=20):
+    def reverse_tax(self, final_amount: float, margin: float = 0, epsilon: float = 1e-3, iters=50):
         guess = final_amount
         for i in range(iters):
-            leftover = guess - self.tax(guess)
+            leftover = guess - self.tax(guess, margin)
             off = final_amount - leftover
             guess += off
             if abs(off) < epsilon:

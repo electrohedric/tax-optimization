@@ -50,6 +50,7 @@ def find_optimal_distribution_secant(starting_amount, return_rate, years, iters=
         return igwad(starting_amount, years, min_dist + x, return_rate)
     
     initial_guess = starting_amount / years
+    initial_guess = (starting_amount * (return_rate * (1 + return_rate) * years)) / (((1 + return_rate) * years) - 1)
     prior_ending = igwad(starting_amount, years, min_dist + initial_guess, return_rate)
     second_guess = initial_guess + (prior_ending / years)
     optimal_guess = scipy.optimize.newton(my_igwad, x0=initial_guess, x1=second_guess, tol=epsilon, maxiter=iters)
@@ -94,9 +95,9 @@ def find_optimal_distribution_secant(starting_amount, return_rate, years, iters=
 # plt.plot(div_years, kappas)
 # plt.show()
 
-sa = 10000
-rr = 0.00625
-ys = 60
-result = find_optimal_distribution_secant(sa, rr, ys)
-print(result)
-print(abs(igwad(sa, ys, result, rr)))
+# sa = 10000
+# rr = 0.00625
+# ys = 60
+# result = find_optimal_distribution_secant(sa, rr, ys)
+# print(result)
+# print(abs(igwad(sa, ys, result, rr)))

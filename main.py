@@ -12,19 +12,8 @@ from multiprocessing import Pool
 
 import investment
 from investment import Profile
-from loader import load_tax_bracket
 # import tax_brackets
-
-standard_deduction_2021 = 12550.00
-standard_deduction_2021_va = 4500.00
-standard_deduction_2021_ss = 0
-standard_deduction_2021_med = 0
-single_tax_bracket_2021 = load_tax_bracket("data/2021/single_tax.csv")
-single_tax_bracket_2021_va = load_tax_bracket("data/2021/va_single_tax.csv")
-single_tax_bracket_2021_ss = load_tax_bracket("data/2021/social_security_tax.csv")
-single_tax_bracket_2021_med = load_tax_bracket("data/2021/medicare_tax.csv")
-
-single_ss_bracket_2021 = load_tax_bracket("data/2021/social_security_provisional_income.csv")
+from tax_bracket_consts import *
 
 
 def test_tax_bracket():
@@ -64,7 +53,7 @@ def test_tax_bracket_total():
         try:
             # amount = 100000
             amount = float(input("Enter income: $"))
-            # deduction = 0
+            deduction = 0
             deduction = float(input("Enter deduction or nothing: $") or '0')
         except ValueError:
             print("Quit")
@@ -79,12 +68,8 @@ def test_tax_bracket_total():
         print(f"${tax_ss.tax_paid:.2f} of ${tax_ss.real_taxable_amount():.2f} taxed (social security)")
         print(f"${tax_med.tax_paid:.2f} of ${tax_med.real_taxable_amount():.2f} taxed (medicare)")
         print(f"${tax_total:.2f} taxed (total)")
-        # tax_sum = tax_brackets.Tax(
-        #     [single_tax_bracket_2021, single_tax_bracket_2021_va,
-        #      single_tax_bracket_2021_ss, single_tax_bracket_2021_med],
-        #     [standard_deduction_2021, standard_deduction_2021_va,
-        #      standard_deduction_2021_ss, standard_deduction_2021_med]
-        # )
+
+        print(single_combined_tax_2021.reverse_tax(amount - tax_total))
 
         print("-" * 100)
         for i in range(len(tax_fed.breakdown)):
@@ -112,38 +97,40 @@ def get_total_tax(amount: float, deduction: float):
     tax_med = single_tax_bracket_2021_med.tax(amount, max(deduction, standard_deduction_2021_med))
     tax_total = tax_fed.tax_paid + tax_va.tax_paid + tax_ss.tax_paid + tax_med.tax_paid
 
+
+
     return tax_total
 
 
 def plot_investment(ir: investment.InvestmentResult, age: int, retire: int, ax0, ax1, ax2, ax3, ax4, title: str):
-    ax0.plot(ir.get_years() + age,
-             ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) +
+    ax0.plot(ir.get_years(),
+             ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + 
              ir.get_total_roth_assets() +
              ir.get_total_incomes().cumsum(), label=title)
     ax0.set_title("Cumulative net worth (post-tax)")
     ax0.legend()
-    ax1.plot(ir.get_years() + age, ir.get_total_roth_assets())
+    ax1.plot(ir.get_years(), ir.get_total_roth_assets())
     ax1.set_title("Roth assets")
-    ax2.plot(ir.get_years() + age, ir.get_total_trad_assets())
+    ax2.plot(ir.get_years(), ir.get_total_trad_assets())
     ax2.set_title("Traditional assets")
-    ax3.plot(ir.get_years() + age, ir.get_taxes_paid())
+    ax3.plot(ir.get_years(), ir.get_taxes_paid())
     ax3.set_title("Taxes paid")
-    ax4.plot(ir.get_years() + age, ir.get_total_incomes())
+    ax4.plot(ir.get_years(), ir.get_total_incomes())
     ax4.set_title("Total income")
     print("=== start investing ===")
     for year in ir.year_results:
         if year.year < 60:
             continue
-        print(f"AGE = {year.year + age}, "
+        print(f"AGE = {year.year}, "
               f"Net worth = ${year.net_worth():,.2f}, "
               f"Taxes paid = ${year.income.income_tax:,.2f}, "
               f"Total income = ${year.income.total_income:,.2f}")
-        if year.year == retire - age - 1:
+        if year.year == retire - 1:
             print("=== retirement ===")
     print("=== dead ===")
     print(f"Total taxes paid = ${ir.get_taxes_paid().sum():,.2f}")
     print(f"Total income = ${ir.get_total_incomes().sum():,.2f}")
-    sum_trad = ir.get_total_trad_assets()[-1] - single_tax_bracket_2021.tax(ir.get_total_trad_assets()[-1], 0).tax_paid
+    sum_trad = ir.get_total_trad_assets()[-1] - single_combined_tax_2021.tax(ir.get_total_trad_assets()[-1])
     print(f"Sum = ${sum_trad + ir.get_total_roth_assets()[-1] + ir.get_total_incomes().sum():,.2f}")
 
 
@@ -157,7 +144,7 @@ def test_investment():
     print("50/50")
     ir_5050 = profile.run_simple_invest(trad_alloc_percent=split / 2, roth_alloc_percent=split / 2)
     print("swep")
-    ir_sweep = profile.run_linsweep2_invest(total_alloc_percent=split, slope_decision=1)
+    ir_sweep = profile.run_linsweep_invest(total_alloc_percent=split, slope_decision=1)
     # ir_60 = profile.run_simple_invest(trad_alloc_percent=split * 0.60, roth_alloc_percent=split * 0.40)
     # ir_80 = profile.run_simple_invest(trad_alloc_percent=split * 0.80, roth_alloc_percent=split * 0.20)
 
@@ -186,6 +173,8 @@ def graph_3d(x: np.ndarray, y: np.ndarray, z: np.ndarray, colormap="coolwarm", z
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_zlabel(z_label)
+    # plt.show(block=False)
+    # plt.savefig("test.vrml")
     plt.show()
 
 
@@ -198,7 +187,7 @@ def get_min_max(n):
 def test_simple_ratio_vs_age_vs_end_balance():
     profile = Profile()
     split = 10
-    grain: int = 500  # number of points to graph in each dimension
+    grain: int = 100  # number of points to graph in each dimension
     ir = None
     years = profile.die - profile.age
 
@@ -207,7 +196,7 @@ def test_simple_ratio_vs_age_vs_end_balance():
     for i, tap in enumerate(x):
         rap = split - tap
         ir = profile.run_simple_invest(trad_alloc_percent=tap, roth_alloc_percent=rap)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() + \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() + \
             ir.get_total_incomes().cumsum()
         # TODO ask nick to explain how this is calculated. Why are is cumulative net worth the same before retirement?
         z[i, ] = net
@@ -233,7 +222,7 @@ def test_simple_ratio_vs_age_vs_end_balance():
     graph_3d(x / split * 100, y, z, z_label="Cumulative net worth (post-tax)", x_label="% Traditional", y_label="Age")
 
 
-def test_piecewise_switchyear_vs_age_vs_endbalance(savings_rate: int = 10):
+def test_piecewise_switchyear_vs_age_vs_endbalance(savings_rate: float = 10, show=True):
     profile = Profile()
     total = savings_rate
     print(f"total is {total}")
@@ -242,10 +231,11 @@ def test_piecewise_switchyear_vs_age_vs_endbalance(savings_rate: int = 10):
 
     x = np.arange(0, retire)
     z = np.zeros((retire, years))  # dims are years x grain
+    ir = None
     for i in x:
         ir = profile.run_piecewise_invest(total_alloc_percent=total, switch_year=i)
         # print(i)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() + \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() + \
             ir.get_total_incomes().cumsum()
         z[i, ] = net
 
@@ -260,9 +250,10 @@ def test_piecewise_switchyear_vs_age_vs_endbalance(savings_rate: int = 10):
     print(f"Minimum end balance: ${last_year[min_x]:,.2f}")
     print("-" * 100)
     print(f"End balance difference: ${last_year[max_x] - last_year[min_x]:,.2f}")
-
-    # y = ir.get_years() + profile.age
-    # graph_3d(x, y, z, z_label="Cumulative net worth (post-tax)", x_label="Switch Year", y_label="Age")
+    #
+    y = ir.get_years() + profile.age
+    if show:
+        graph_3d(x, y, z, z_label="Cumulative net worth (post-tax)", x_label="Switch Year", y_label="Age")
     return sy_max
 
 
@@ -281,7 +272,7 @@ def test_piecewise2_switchyear_vs_duration_vs_endbalance():
             if sy + d > retire:
                 continue
             ir = profile.run(investment.piecewise2_invest, switch_year=sy, switch_duration=d, total_alloc_percent=total)
-            net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+            net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
                 + ir.get_total_incomes().cumsum()
             z[i, j] = net[-1]
             if z[i, j] < min_net:
@@ -318,7 +309,7 @@ def test_linsweep_slopedecision_vs_age_vs_endbalance():
     z = np.zeros((grain, years))  # dims are years x grain
     for i, sd in enumerate(x):
         ir = profile.run_linsweep_invest(total_alloc_percent=total, slope_decision=sd)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         z[i, ] = net
     y = ir.get_years() + profile.age
@@ -350,7 +341,7 @@ def test_linsweep2_slopedecision_vs_age_vs_endbalance():
     z = np.zeros((retire, years))  # dims are years x grain
     for i in x:
         ir = profile.run_linsweep2_invest(total_alloc_percent=total, switch_year=i)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         z[i, ] = net
     y = ir.get_years() + profile.age
@@ -381,7 +372,7 @@ def test_linsweep3_slopedecision_vs_age_vs_endbalance():
     z = np.zeros((grain, years))  # dims are years x grain
     for i, sd in enumerate(x):
         ir = profile.run_linsweep3_invest(total_alloc_percent=total, slope_decision=sd)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         z[i, ] = net
     y = ir.get_years() + profile.age
@@ -416,7 +407,7 @@ def test_linsweep4_slopedecision_vs_age_vs_endbalance():
     for j in range(100):
         for i in x:
             ir = profile.run_linsweep4_invest(total_alloc_percent=total, switch_year=i, break1=j)
-            net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+            net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
                 + ir.get_total_incomes().cumsum()
             z[i, ] = net
 
@@ -455,7 +446,7 @@ def test_erf_switchyear_vs_slope_vs_endbalance():
     for i, sy in enumerate(x):
         for j, a in enumerate(y):
             ir = profile.run(investment.erf_invest, switch_year=sy, a=a, normalize=True, total_alloc_percent=total)
-            net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+            net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
                 + ir.get_total_incomes().cumsum()
             z[i, j] = net[-1]
         print(i)
@@ -489,7 +480,7 @@ def test_quadratic_slopedecision_vs_age_vs_endbalance():
 
     for i in x:
         ir = profile.run_quadratic_invest(total_alloc_percent=total, switch_year=i, break1=i)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         z[i, ] = net
     y = ir.get_years() + profile.age
@@ -523,7 +514,7 @@ def test_exp_slopedecision_vs_age_vs_endbalance():
 
     for i in x:
         ir = profile.run_exp_invest(total_alloc_percent=total, switch_year=i, break1=i)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         z[i, ] = net
     y = ir.get_years() + profile.age
@@ -557,7 +548,7 @@ def test_log_slopedecision_vs_age_vs_endbalance():
 
     for i, sy in enumerate(x):
         ir = profile.run_log_invest(total_alloc_percent=total, break_=sy)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         z[i, ] = net
     y = ir.get_years() + profile.age
@@ -583,7 +574,7 @@ def find_best_ratio(profile, x, **kwargs):  # super inefficient!
     for i, tap in enumerate(x):
         rap = x[-1] - tap
         ir = profile.run_simple_invest(trad_alloc_percent=tap, roth_alloc_percent=rap, **kwargs)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         if net[-1] > best_net:
             best_net = net[-1]
@@ -623,15 +614,15 @@ def test_salary_vs_savingsrate_vs_optimalratio():
 
 
 def optimize_sorted_random_1():
-    best_switch_year = test_piecewise_switchyear_vs_age_vs_endbalance(10)
+    best_switch_year = test_piecewise_switchyear_vs_age_vs_endbalance(10, show=False)
     profile = Profile()
     retirement = profile.retire - profile.age
-    all_trad_year = best_switch_year + 4
+    all_trad_year = best_switch_year + 10
     # all_trad_year = 15
     best_net = 0
     best_strategy = None
     iterations = 10000
-    iterations_percent = iterations/100
+    iterations_percent = int(iterations/100)
 
     for i in range(iterations):
         random = np.random.normal(0.5, 2, all_trad_year).clip(0, 1)
@@ -640,10 +631,10 @@ def optimize_sorted_random_1():
         #                                ((all_trad_year + 1) / num_rand), random), np.ones(retirement - all_trad_year))
         strategy = np.append(random, np.ones(retirement - all_trad_year))
         ir = profile.run(investment.array_invest, percentages=strategy)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         final_net = net[-1]
-        if i % 100 == 0:
+        if i % iterations_percent == 0:
             # print(i / range(iterations) * 100, " percent complete \r")
             print(f"{i / iterations_percent:,.0f}% done at {i} iterations")
         if final_net > best_net:
@@ -673,7 +664,7 @@ def optimize_sorted_random_2():
         random.sort()
         strategy = np.append(random, np.ones(retirement - all_trad_year))
         ir = profile.run(investment.array_invest, percentages=strategy)
-        net = ir.get_total_trad_assets_post_tax(single_tax_bracket_2021) + ir.get_total_roth_assets() \
+        net = ir.get_total_trad_assets_post_tax(single_combined_tax_2021) + ir.get_total_roth_assets() \
             + ir.get_total_incomes().cumsum()
         final_net = net[-1]
         if i % 100 == 0:
